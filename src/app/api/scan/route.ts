@@ -5,12 +5,16 @@ import {
   resolveRange,
   fetchWalletEvents,
   buildWalletStats,
+  pool,
   type WalletScanResult,
 } from "@/lib/engine";
 import {
   getBlockscout,
   bsAddressTransfers,
   bsTxDetails,
+  bsTxNativeInflow,
+  bsTxErc20FlowUsd,
+  bsCoinPrice,
 } from "@/lib/blockscout";
 import { rateLimited, clientIp, badRequest, tooMany } from "../_limit";
 import { scanSolanaWallet } from "@/lib/solana";
@@ -34,12 +38,55 @@ async function scanViaBlockscout(
   minTs?: number
 ): Promise<WalletScanResult> {
   void explorerSymbol;
-  const { items: transfers, truncated: bsTruncated } = await bsAddressTransfers(
+  const { items: rawTransfers, truncated: bsTruncated } = await bsAddressTransfers(
     bs, wallet, minTs !== undefined ? 0 : fromBlock, 12, 500, minTs
+  );
+  // chronological: sales must be processed after their mints/buys (FIFO lots)
+  const transfers = [...rawTransfers].sort(
+    (a, b) =>
+      (a.timestamp || 0) - (b.timestamp || 0) || a.blockNumber - b.blockNumber
   );
 
   // tx value/gas attribution
   const txs = await bsTxDetails(bs, transfers.map((t) => t.txHash));
+
+  // ---- sale proceeds detection ----
+  // On some chains (e.g. Robinhood) marketplace sales pay out in ERC-20
+  // stablecoins via Seaport: tx.value is 0 and wallet IS the initiator.
+  // Real proceeds = internal txs + ERC-20 received by wallet in the tx.
+  let totalMints = 0, totalBuys = 0, totalSales = 0, totalTransfersOut = 0;
+  let spent = 0n, received = 0n, gas = 0n;
+  const wl = wallet.toLowerCase();
+  const txTimestamps: Record<string, number> = {};
+
+  // count events per tx for value/gas sharing
+  const perTxCount = new Map<string, number>();
+  for (const t of transfers) perTxCount.set(t.txHash, (perTxCount.get(t.txHash) || 0) + 1);
+  const perTxDisposals = new Map<string, number>();
+  for (const t of transfers) if (t.from === wl && t.to !== wl) {
+    perTxDisposals.set(t.txHash, (perTxDisposals.get(t.txHash) || 0) + 1);
+  }
+
+  // disposal txs initiated by the wallet with 0 native value:
+  // probe for internal/ERC-20 inflow (capped to keep scans fast)
+  const incomeWei = new Map<string, bigint>();
+  const probeCandidates: string[] = [];
+  for (const [h] of perTxDisposals) {
+    const tx = txs.get(h);
+    if (tx && tx.from === wl && tx.valueWei === 0n) probeCandidates.push(h);
+  }
+  if (probeCandidates.length > 0) {
+    const rateFallback = await bsCoinPrice(bs);
+    await pool(probeCandidates.slice(0, 30), 6, async (h) => {
+      const tx = txs.get(h)!;
+      const rate = tx.exchangeRate ?? rateFallback;
+      let inflow = await bsTxNativeInflow(bs, h, wl);
+      const { inUsd, outUsd } = await bsTxErc20FlowUsd(bs, h, wl);
+      const netUsd = inUsd - outUsd;
+      if (netUsd > 0 && rate > 0) inflow += BigInt(Math.round((netUsd / rate) * 1e18));
+      incomeWei.set(h, inflow);
+    });
+  }
 
   interface Lot { qty: bigint; unitCostWei: bigint }
   const positions = new Map<string, Lot[]>();
@@ -47,14 +94,6 @@ async function scanViaBlockscout(
     string,
     WalletScanResult["tokens"][0] & { _events: number }
   >();
-  let totalMints = 0, totalBuys = 0, totalSales = 0;
-  let spent = 0n, received = 0n, gas = 0n;
-  const wl = wallet.toLowerCase();
-  const txTimestamps: Record<string, number> = {};
-
-  // count events per tx for gas sharing
-  const perTxCount = new Map<string, number>();
-  for (const t of transfers) perTxCount.set(t.txHash, (perTxCount.get(t.txHash) || 0) + 1);
 
   for (const t of transfers) {
     if (t.from === wl && t.to === wl) continue;
@@ -65,7 +104,7 @@ async function scanViaBlockscout(
         contract: t.contract,
         tokenId: t.tokenId,
         standard: t.standard,
-        mints: 0, buys: 0, sales: 0, held: "0",
+        mints: 0, buys: 0, sales: 0, transfersOut: 0, held: "0",
         spentWei: "0", receivedWei: "0", realizedPnlWei: "0",
         realizedPnlPct: null, avgBuyWei: null, avgSaleWei: null,
         eventsCount: 0, _events: 0,
@@ -77,9 +116,12 @@ async function scanViaBlockscout(
     const lots = positions.get(k)!;
     const qty = t.standard === "721" ? 1n : t.amount;
     const tx = txs.get(t.txHash);
-    const txValue = tx?.valueWei ?? 0n;
+    const nInTx = perTxCount.get(t.txHash) || 1;
+    const txValue = tx?.valueWei !== undefined && tx?.valueWei !== null
+      ? tx.valueWei / BigInt(nInTx)
+      : 0n;
     const gasShare = tx?.gasUsedWei !== null && tx?.gasUsedWei !== undefined
-      ? tx.gasUsedWei / BigInt(perTxCount.get(t.txHash) || 1)
+      ? tx.gasUsedWei / BigInt(nInTx)
       : 0n;
 
     if (t.to === wl) {
@@ -99,10 +141,25 @@ async function scanViaBlockscout(
         gas += gasShare;
       }
     } else if (t.from === wl) {
-      st.sales += Number(qty);
-      totalSales += Number(qty);
-      st.receivedWei = (BigInt(st.receivedWei) + txValue).toString();
-      received += txValue;
+      // disposal — proceeds = tx.value only when buyer paid the wallet directly,
+      // else probed internal/ERC-20 inflow. No proceeds => transfer out.
+      const probed = incomeWei.get(t.txHash);
+      const nDisp = perTxDisposals.get(t.txHash) || 1;
+      let proceedsWei = 0n;
+      if (tx && tx.from !== wl && tx.to === wl && tx.valueWei > 0n) {
+        proceedsWei = tx.valueWei / BigInt(nDisp);
+      } else if (probed !== undefined && probed > 0n) {
+        proceedsWei = probed / BigInt(nDisp);
+      }
+      if (proceedsWei > 0n) {
+        st.sales += Number(qty);
+        totalSales += Number(qty);
+        st.receivedWei = (BigInt(st.receivedWei) + proceedsWei).toString();
+        received += proceedsWei;
+      } else {
+        st.transfersOut += Number(qty);
+        totalTransfersOut += Number(qty);
+      }
       if (gasShare > 0n) gas += gasShare;
       let rem = qty, costOut = 0n;
       while (rem > 0n && lots.length) {
@@ -112,7 +169,7 @@ async function scanViaBlockscout(
         lot.qty -= take; rem -= take;
         if (lot.qty === 0n) lots.shift();
       }
-      st.realizedPnlWei = (BigInt(st.realizedPnlWei) + txValue - costOut).toString();
+      st.realizedPnlWei = (BigInt(st.realizedPnlWei) + proceedsWei - costOut).toString();
     }
     if (tx?.timestamp) txTimestamps[t.txHash] = tx.timestamp;
   }
@@ -153,6 +210,7 @@ async function scanViaBlockscout(
     totals: {
       nftsBought: totalBuys,
       nftsSold: totalSales,
+      nftsTransferredOut: totalTransfersOut,
       nftsMinted: totalMints,
       currentHeld: heldTokens,
       spentWei: spent.toString(),

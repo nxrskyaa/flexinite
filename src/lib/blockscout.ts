@@ -93,6 +93,9 @@ export interface TxDetail {
   valueWei: bigint;
   gasUsedWei: bigint | null;
   timestamp: number | null;
+  from: string;
+  to: string;
+  exchangeRate: number | null;
 }
 
 async function jget(url: string): Promise<unknown | null> {
@@ -301,15 +304,114 @@ export async function bsTxDetails(
       gas_used?: string;
       gas_price?: string;
       timestamp?: string;
+      from?: { hash?: string };
+      to?: { hash?: string };
+      exchange_rate?: number | string;
     } | null;
     const valueWei = j?.value ? BigInt(j.value) : 0n;
     let gas: bigint | null = null;
     if (j?.gas_used && j?.gas_price) gas = BigInt(j.gas_used) * BigInt(j.gas_price);
+    const er = parseFloat(String(j?.exchange_rate ?? ""));
     map.set(h, {
       valueWei,
       gasUsedWei: gas,
       timestamp: j?.timestamp ? Math.floor(new Date(j.timestamp).getTime() / 1000) : null,
+      from: (j?.from?.hash || "").toLowerCase(),
+      to: (j?.to?.hash || "").toLowerCase(),
+      exchangeRate: Number.isFinite(er) && er > 0 ? er : null,
     });
   });
   return map;
+}
+
+// ---------- sale detection: incoming value for a wallet in a tx ----------
+
+/**
+ * Native ETH received by `wallet` via internal transactions of `txHash`.
+ * Marketplace payouts (Seaport etc.) arrive as internal txs, not tx.value.
+ */
+export async function bsTxNativeInflow(
+  base: string,
+  txHash: string,
+  wallet: string
+): Promise<bigint> {
+  let total = 0n;
+  let params: Record<string, string | number> | null = {};
+  let pages = 0;
+  while (params !== null && pages < 6) {
+    const url =
+      `${base}/api/v2/transactions/${txHash}/internal-transactions` +
+      (Object.keys(params).length ? `?${qs(params)}` : "");
+    const j = (await jget(url)) as {
+      items?: Array<{ to?: { hash?: string }; value?: string }>;
+      next_page_params?: Record<string, string | number> | null;
+    } | null;
+    if (!j || !Array.isArray(j.items)) break;
+    for (const it of j.items) {
+      if ((it.to?.hash || "").toLowerCase() === wallet && it.value) {
+        total += BigInt(it.value);
+      }
+    }
+    pages++;
+    params = j.next_page_params ? { ...j.next_page_params } : null;
+  }
+  return total;
+}
+
+/**
+ * USD value of ERC-20 tokens received/sent by `wallet` in `txHash`
+ * (e.g. USDG/USDC marketplace payouts and protocol fees on non-ETH chains).
+ */
+export async function bsTxErc20FlowUsd(
+  base: string,
+  txHash: string,
+  wallet: string
+): Promise<{ inUsd: number; outUsd: number }> {
+  let inUsd = 0, outUsd = 0;
+  let params: Record<string, string | number> | null = { type: "ERC-20" };
+  let pages = 0;
+  while (params !== null && pages < 6) {
+    const url =
+      `${base}/api/v2/transactions/${txHash}/token-transfers` +
+      (Object.keys(params).length ? `?${qs(params)}` : "");
+    const j = (await jget(url)) as {
+      items?: Array<{
+        from?: { hash?: string };
+        to?: { hash?: string };
+        total?: { value?: string; decimals?: string | number };
+        token?: { exchange_rate?: string | number; decimals?: string | number };
+      }>;
+      next_page_params?: Record<string, string | number> | null;
+    } | null;
+    if (!j || !Array.isArray(j.items)) break;
+    for (const it of j.items) {
+      const fromW = (it.from?.hash || "").toLowerCase() === wallet;
+      const toW = (it.to?.hash || "").toLowerCase() === wallet;
+      if (!fromW && !toW) continue;
+      const raw = it.total?.value;
+      if (!raw) continue;
+      const dec = parseInt(String(it.total?.decimals ?? it.token?.decimals ?? "18"), 10) || 18;
+      const rate = parseFloat(String(it.token?.exchange_rate ?? ""));
+      if (!Number.isFinite(rate) || rate <= 0) continue;
+      const usd = (parseInt(raw, 10) / 10 ** dec) * rate;
+      if (toW) inUsd += usd;
+      if (fromW) outUsd += usd;
+    }
+    pages++;
+    params = j.next_page_params ? { type: "ERC-20", ...j.next_page_params } : null;
+  }
+  return { inUsd, outUsd };
+}
+
+const coinPriceCache = new Map<string, number>();
+
+/** Native coin price in USD from Blockscout /stats (cached). 0 if unavailable. */
+export async function bsCoinPrice(base: string): Promise<number> {
+  const hit = coinPriceCache.get(base);
+  if (hit !== undefined) return hit;
+  const j = (await jget(`${base}/api/v2/stats`)) as { coin_price?: string | number } | null;
+  const p = parseFloat(String(j?.coin_price ?? ""));
+  const v = Number.isFinite(p) && p > 0 ? p : 0;
+  coinPriceCache.set(base, v);
+  return v;
 }

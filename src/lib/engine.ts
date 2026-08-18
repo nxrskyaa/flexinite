@@ -287,6 +287,7 @@ export interface TokenStat {
   mints: number;
   buys: number;
   sales: number;
+  transfersOut: number;
   held: string;
   spentWei: string;
   receivedWei: string;
@@ -309,6 +310,7 @@ export interface WalletScanResult {
   totals: {
     nftsBought: number;
     nftsSold: number;
+    nftsTransferredOut: number;
     nftsMinted: number;
     currentHeld: number;
     spentWei: string;
@@ -337,9 +339,13 @@ export async function buildWalletStats(
   const stats = new Map<string, TokenStat>();
 
   const key = (c: string, id: string) => `${c}:${id}`;
-  let totalMints = 0, totalBuys = 0, totalSales = 0;
+  let totalMints = 0, totalBuys = 0, totalSales = 0, totalTransfersOut = 0;
   let spent = 0n, received = 0n, gas = 0n;
   const txTimestamps: Record<string, number> = {};
+
+  // per-tx event count: share tx value/gas across events in the same tx
+  const perTxCount = new Map<string, number>();
+  for (const ev of events) perTxCount.set(ev.txHash, (perTxCount.get(ev.txHash) || 0) + 1);
 
   for (const ev of events) {
     if (ev.from === wl && ev.to === wl) continue; // self-transfer
@@ -350,7 +356,7 @@ export async function buildWalletStats(
         contract: ev.contract,
         tokenId: ev.tokenId,
         standard: ev.standard,
-        mints: 0, buys: 0, sales: 0, held: "0",
+        mints: 0, buys: 0, sales: 0, transfersOut: 0, held: "0",
         spentWei: "0", receivedWei: "0", realizedPnlWei: "0",
         realizedPnlPct: null, avgBuyWei: null, avgSaleWei: null,
         eventsCount: 0,
@@ -361,11 +367,14 @@ export async function buildWalletStats(
     st.eventsCount++;
     const lots = positions.get(k)!;
     const qty = ev.value > 0n ? ev.value : 1n;
+    const nInTx = perTxCount.get(ev.txHash) || 1;
+    const valueShare = nInTx > 1 ? ev.txValueWei / BigInt(nInTx) : ev.txValueWei;
+    const gasShareFull = ev.gasUsedWei ?? 0n;
+    const gasShare = nInTx > 1 ? gasShareFull / BigInt(nInTx) : gasShareFull;
 
     if (ev.to === wl) {
       // acquisition
       const isMint = ev.from === ZERO_ADDR;
-      const gasShare = ev.gasUsedWei ?? 0n;
       if (isMint) {
         st.mints += Number(qty);
         totalMints += Number(qty);
@@ -373,26 +382,31 @@ export async function buildWalletStats(
         st.buys += Number(qty);
         totalBuys += Number(qty);
       }
-      const paid = ev.txValueWei > 0n;
-      const unitCost = paid ? ev.txValueWei / qty + gasShare / qty : gasShare > 0n ? gasShare / qty : 0n;
+      const paid = valueShare > 0n;
+      const unitCost = paid ? valueShare / qty + gasShare / qty : gasShare > 0n ? gasShare / qty : 0n;
       lots.push({ qty, unitCostWei: unitCost, hasCost: paid || gasShare > 0n });
       if (paid) {
-        st.spentWei = (BigInt(st.spentWei) + ev.txValueWei).toString();
-        spent += ev.txValueWei;
+        st.spentWei = (BigInt(st.spentWei) + valueShare).toString();
+        spent += valueShare;
       }
-      if (ev.gasUsedWei) {
-        st.spentWei = (BigInt(st.spentWei) + ev.gasUsedWei).toString();
-        gas += ev.gasUsedWei;
+      if (gasShare > 0n) {
+        st.spentWei = (BigInt(st.spentWei) + gasShare).toString();
+        gas += gasShare;
       }
     } else if (ev.from === wl) {
-      // disposal
-      st.sales += Number(qty);
-      totalSales += Number(qty);
-      const revenue = ev.txValueWei;
-      st.receivedWei = (BigInt(st.receivedWei) + revenue).toString();
-      received += revenue;
+      // disposal — only count as SALE if ETH came in for it
+      const revenue = valueShare;
+      if (revenue > 0n) {
+        st.sales += Number(qty);
+        totalSales += Number(qty);
+        st.receivedWei = (BigInt(st.receivedWei) + revenue).toString();
+        received += revenue;
+      } else {
+        st.transfersOut += Number(qty);
+        totalTransfersOut += Number(qty);
+      }
       if (ev.gasUsedWei) {
-        gas += ev.gasUsedWei;
+        gas += nInTx > 1 ? gasShareFull / BigInt(nInTx) : gasShareFull;
       }
       // FIFO cost removal
       let remaining = qty;
@@ -441,6 +455,7 @@ export async function buildWalletStats(
   const totals = {
     nftsBought: totalBuys,
     nftsSold: totalSales,
+    nftsTransferredOut: totalTransfersOut,
     nftsMinted: totalMints,
     currentHeld: heldTokens,
     spentWei: spent.toString(),
