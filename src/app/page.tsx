@@ -223,8 +223,10 @@ export default function Home() {
     return defaultCardStyle;
   });
   const [cardModal, setCardModal] = useState(false);
+  const [copied, setCopied] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const bgFileRef = useRef<HTMLInputElement>(null);
 
   const symbol = chain?.symbol || "ETH";
 
@@ -447,9 +449,68 @@ export default function Home() {
     a.click();
   };
 
-  // card data (best scan for card)
+  const copyCard = async () => {
+    if (!cardRef.current) return;
+    try {
+      const { toBlob } = await import("html-to-image");
+      const blob = await toBlob(cardRef.current, {
+        pixelRatio: 2,
+        cacheBust: true,
+        filter: (el) => !(el instanceof HTMLElement && el.hasAttribute("data-no-export")),
+      });
+      if (!blob) return;
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard not supported */ }
+  };
+
+  const onBgUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const isVideo = f.type.startsWith("video/");
+    // keep under ~4MB for export reliability
+    if (f.size > 6 * 1024 * 1024) {
+      setError("Background file too large (max ~6MB)");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const url = String(reader.result || "");
+      setCardStyle((s) => ({ ...s, bgMode: isVideo ? "video" : "image", bgUrl: url }));
+      setError(null);
+    };
+    reader.readAsDataURL(f);
+    e.target.value = "";
+  };
+
+  // card data (wallet scan or bot PNL)
   const cardData = useMemo(() => {
-    if (!result || result.kind !== "scan") return null;
+    if (!result) return null;
+    if (result.kind === "bot") {
+      const d = result.data;
+      const t = d.totals;
+      return {
+        wallet: t.walletCount === 1 ? d.wallets[0]?.wallet || d.contract : `${t.walletCount} wallets`,
+        chainLabel: chain?.label || chain?.name || "Chain",
+        chainLogo: chain?.logo || "◈",
+        symbol: chain?.symbol || "ETH",
+        spentWei: t.spentWei,
+        receivedWei: t.receivedWei,
+        gasWei: "0",
+        realizedPnlWei: t.realizedPnlWei,
+        realizedPnlPct: t.realizedPnlPct,
+        mints: Number(t.minted),
+        buys: Number(t.bought),
+        sales: Number(t.sold),
+        held: Number(t.held),
+        firstTs: null,
+        lastTs: null,
+        fromBlock: 0,
+        toBlock: 0,
+      };
+    }
+    if (result.kind !== "scan") return null;
     const d = result.data;
     const ts = Object.values(d.sampleTimestamps || {}).sort();
     const first = ts[0];
@@ -694,7 +755,7 @@ export default function Home() {
             <ContractView data={result.data} symbol={chain?.symbol || "ETH"} />
           )}
           {!loading && result?.kind === "bot" && (
-            <BotView data={result.data} symbol={chain?.symbol || "ETH"} />
+            <BotView data={result.data} symbol={chain?.symbol || "ETH"} onCard={() => setCardModal(true)} />
           )}
           {!loading && !result && !error && (
             <div className="panel p-10 text-center text-sm" style={{ color: "var(--text-dim)" }}>
@@ -737,14 +798,50 @@ export default function Home() {
                   value={cardStyle.theme}
                   onChange={(e) => setCardStyle({ ...cardStyle, theme: e.target.value as CardStyle["theme"] })}
                 >
+                  <option value="holo">Holo ✨</option>
+                  <option value="gold">Gold 🏆</option>
+                  <option value="gradient">Gradient</option>
                   <option value="dark">Dark</option>
                   <option value="light">Light</option>
-                  <option value="gradient">Gradient</option>
                 </select>
               </div>
+
+              {/* custom art background */}
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="text-xs" style={{ color: "var(--text-dim)" }}>Card art:</span>
+                <button
+                  className="btn btn-ghost !py-1 text-xs"
+                  onClick={() => bgFileRef.current?.click()}
+                >
+                  {cardStyle.bgMode === "none" ? "Upload image / video" : "Change"}
+                </button>
+                {cardStyle.bgMode !== "none" && (
+                  <button
+                    className="btn btn-ghost !py-1 text-xs"
+                    style={{ color: "var(--neg)" }}
+                    onClick={() => setCardStyle({ ...cardStyle, bgMode: "none", bgUrl: undefined })}
+                  >
+                    Remove
+                  </button>
+                )}
+                <input
+                  ref={bgFileRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  className="hidden"
+                  onChange={onBgUpload}
+                />
+                <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
+                  video shows live on the card · downloads as current frame
+                </span>
+              </div>
+
               <div className="flex gap-2">
                 <button className="btn btn-accent flex-1 justify-center text-sm" onClick={downloadCard}>
                   Download PNG
+                </button>
+                <button className="btn btn-ghost text-sm" onClick={copyCard}>
+                  {copied ? "Copied! ✓" : "Copy"}
                 </button>
                 <button className="btn btn-ghost text-sm" onClick={() => setCardModal(false)}>
                   Close
@@ -988,13 +1085,20 @@ function ContractView({ data, symbol }: { data: ContractResult; symbol: string }
   );
 }
 
-function BotView({ data, symbol }: { data: BotResult; symbol: string }) {
+function BotView({ data, symbol, onCard }: { data: BotResult; symbol: string; onCard?: () => void }) {
   const t = data.totals;
   return (
     <div className="fade-in">
-      <h2 className="text-lg font-bold mb-1">
-        Bot PNL — {data.name || data.symbol || shortAddr(data.contract)}
-      </h2>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+        <h2 className="text-lg font-bold">
+          Bot PNL — {data.name || data.symbol || shortAddr(data.contract)}
+        </h2>
+        {onCard && (
+          <button className="btn btn-ghost text-sm !py-1.5" onClick={onCard}>
+            PnL Card →
+          </button>
+        )}
+      </div>
       <div className="text-xs mb-4" style={{ color: "var(--text-dim)" }}>
         {t.walletCount} wallets · {data.standard}
       </div>
