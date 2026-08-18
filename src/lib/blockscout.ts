@@ -122,7 +122,8 @@ interface BsPage {
 function parsePage(
   page: BsPage,
   onlyToken?: string,
-  minBlock?: number
+  minBlock?: number,
+  minTs?: number
 ): BsTransfer[] {
   const out: BsTransfer[] = [];
   for (const it of page.items || []) {
@@ -133,6 +134,8 @@ function parsePage(
     ).toLowerCase();
     if (onlyToken && contract !== onlyToken) continue;
     if (minBlock !== undefined && it.block_number < minBlock) continue;
+    const ts = it.timestamp ? Math.floor(new Date(it.timestamp).getTime() / 1000) : null;
+    if (minTs !== undefined && ts !== null && ts < minTs) continue;
     const tt = it.token_type || it.token?.type || "";
     let standard: "721" | "1155" | null = null;
     if (tt.includes("721")) standard = "721";
@@ -157,7 +160,7 @@ function parsePage(
       to,
       txHash: it.transaction_hash,
       blockNumber: it.block_number,
-      timestamp: it.timestamp ? Math.floor(new Date(it.timestamp).getTime() / 1000) : null,
+      timestamp: ts,
     });
   }
   return out;
@@ -169,14 +172,15 @@ function qs(params: Record<string, string | number>): string {
     .join("&");
 }
 
-// paginate until block < minBlock or maxPages or maxItems
+// paginate until block < minBlock or timestamp < minTs or maxPages or maxItems
 async function paginate(
   baseUrl: string,
   firstParams: Record<string, string | number>,
   minBlock: number,
   maxPages: number,
   onlyToken?: string,
-  maxItems = Infinity
+  maxItems = Infinity,
+  minTs?: number
 ): Promise<{ items: BsTransfer[]; truncated: boolean }> {
   const out: BsTransfer[] = [];
   let params: Record<string, string | number> | null = firstParams;
@@ -185,7 +189,7 @@ async function paginate(
   while (params && pages < maxPages) {
     const page = (await jget(`${baseUrl}?${qs(params)}`)) as BsPage | null;
     if (!page || !Array.isArray(page.items)) break;
-    const items = parsePage(page, onlyToken, minBlock);
+    const items = parsePage(page, onlyToken, minBlock, minTs);
     out.push(...items);
     pages++;
     if (out.length >= maxItems) {
@@ -195,6 +199,11 @@ async function paginate(
     }
     const last = page.items[page.items.length - 1];
     if (last && last.block_number < minBlock) break;
+    // timestamp-based early exit (pages arrive newest-first)
+    if (minTs !== undefined && last?.timestamp) {
+      const lastTs = Math.floor(new Date(last.timestamp).getTime() / 1000);
+      if (lastTs < minTs) break;
+    }
     if (!page.next_page_params) break;
     params = { ...firstParams, ...page.next_page_params };
   }
@@ -208,7 +217,8 @@ export async function bsAddressTransfers(
   address: string,
   fromBlock: number,
   maxPages = 12,
-  maxItems = 500
+  maxItems = 500,
+  minTs?: number
 ): Promise<{ items: BsTransfer[]; truncated: boolean }> {
   const first = await paginate(
     `${base}/api/v2/addresses/${address}/token-transfers`,
@@ -216,7 +226,8 @@ export async function bsAddressTransfers(
     fromBlock,
     maxPages,
     undefined,
-    maxItems
+    maxItems,
+    minTs
   );
   if (first.items.length > 0) return first;
   // some instances reject the combined type param → retry without and filter client-side
@@ -226,7 +237,8 @@ export async function bsAddressTransfers(
     fromBlock,
     maxPages,
     undefined,
-    maxItems
+    maxItems,
+    minTs
   );
 }
 
@@ -235,7 +247,8 @@ export async function bsTokenTransfers(
   token: string,
   fromBlock: number,
   maxPages = 40,
-  maxItems = 2000
+  maxItems = 2000,
+  minTs?: number
 ): Promise<{ items: BsTransfer[]; truncated: boolean }> {
   return paginate(
     `${base}/api/v2/tokens/${token}/transfers`,
@@ -243,7 +256,8 @@ export async function bsTokenTransfers(
     fromBlock,
     maxPages,
     token.toLowerCase(),
-    maxItems
+    maxItems,
+    minTs
   );
 }
 

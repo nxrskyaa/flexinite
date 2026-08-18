@@ -30,10 +30,13 @@ async function scanViaBlockscout(
   toBlock: number,
   truncated: boolean,
   nativeBalanceWei: bigint,
-  explorerSymbol: string
+  explorerSymbol: string,
+  minTs?: number
 ): Promise<WalletScanResult> {
   void explorerSymbol;
-  const { items: transfers, truncated: bsTruncated } = await bsAddressTransfers(bs, wallet, fromBlock);
+  const { items: transfers, truncated: bsTruncated } = await bsAddressTransfers(
+    bs, wallet, minTs !== undefined ? 0 : fromBlock, 12, 500, minTs
+  );
 
   // tx value/gas attribution
   const txs = await bsTxDetails(bs, transfers.map((t) => t.txHash));
@@ -231,9 +234,20 @@ export async function GET(req: NextRequest) {
     const chain = await getChain(chainId);
     step("chain loaded");
 
-    // latest block + range (try rpc, fallback to blockscout blocks)
+    // time window (chain-speed agnostic — block time varies 0.1s..12s+)
+    const days = windowDays ? parseFloat(windowDays) : 30;
+    const minTs = Math.floor(Date.now() / 1000) - Math.floor(days * 86400);
+
+    const bs = await getBlockscout(chain);
+    step(`blockscout=${bs || "none"}`);
+
+    // latest block for display + RPC fallback range
     let rpcUrl: string | null = null;
-    let range: { fromBlock: number; toBlock: number; truncated: boolean };
+    let range: { fromBlock: number; toBlock: number; truncated: boolean } = {
+      fromBlock: 0,
+      toBlock: 0,
+      truncated: false,
+    };
     try {
       rpcUrl = await resolveRpc(chain);
       step(`rpc resolved ${rpcUrl}`);
@@ -242,17 +256,14 @@ export async function GET(req: NextRequest) {
     } catch (e) {
       step(`rpc failed: ${String((e as Error).message || e).slice(0, 80)}`);
       rpcUrl = null;
-      range = { fromBlock: 0, toBlock: 0, truncated: false };
     }
-    const bs = await getBlockscout(chain);
-    step(`blockscout=${bs || "none"}`);
-    if (!rpcUrl && bs) {
+    if (bs && (range.toBlock === 0 || !rpcUrl)) {
       const j = await fetch(`${bs}/api/v2/main-page/blocks`, {
         signal: AbortSignal.timeout(15000),
       }).then((r) => r.json()).catch(() => null);
       const latest = Array.isArray(j) && j[0]?.height ? Number(j[0].height) : NaN;
       if (!isNaN(latest)) {
-        const days = windowDays ? parseFloat(windowDays) : 30;
+        // bounded estimate for the RPC-fallback path (best-effort 12s block assumption)
         range = {
           fromBlock: Math.max(0, latest - Math.floor((days * 86400) / 12)),
           toBlock: latest,
@@ -277,7 +288,7 @@ export async function GET(req: NextRequest) {
         }
         step("bs scan start");
         const result = await scanViaBlockscout(
-          bs, wallet, chainId, range.fromBlock, range.toBlock, range.truncated, nativeBal, chain.symbol
+          bs, wallet, chainId, range.fromBlock, range.toBlock, range.truncated, nativeBal, chain.symbol, minTs
         );
         step(`bs scan done tokens=${result.tokens.length}`);
         return Response.json(result);

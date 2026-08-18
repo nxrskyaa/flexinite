@@ -57,14 +57,14 @@ export async function GET(req: NextRequest) {
       if (standard === "Unknown") standard = probed.is721 ? "ERC-721" : probed.is1155 ? "ERC-1155" : "Unknown";
     }
 
-    // range
+    // range (time-window based)
     let fromB = 0, toB = 0, truncated = false;
     const j = bs ? await fetch(`${bs}/api/v2/main-page/blocks`, { signal: AbortSignal.timeout(15000) }).then((r) => r.json()).catch(() => null) : null;
     const latest = Array.isArray(j) && j[0]?.height ? Number(j[0].height) : NaN;
     const days = windowDays ? parseFloat(windowDays) : 30;
+    const minTs = Math.floor(Date.now() / 1000) - Math.floor(days * 86400);
     if (!isNaN(latest)) {
       toB = latest;
-      fromB = Math.max(0, latest - Math.floor((days * 86400) / 12));
     } else if (rpc) {
       const range = await resolveRange(rpc, fromBlock, windowDays);
       fromB = range.fromBlock; toB = range.toBlock; truncated = range.truncated;
@@ -73,7 +73,9 @@ export async function GET(req: NextRequest) {
     // transfers
     let moves: Move[] = [];
     if (bs) {
-      const { items: transfers, truncated: bsTruncated } = await bsTokenTransfers(bs, contract, fromB);
+      const { items: transfers, truncated: bsTruncated } = await bsTokenTransfers(
+        bs, contract, fromB, 40, 2000, minTs
+      );
       moves = transfers.map((t) => ({
         from: t.from, to: t.to,
         qty: t.standard === "721" ? 1n : t.amount,
