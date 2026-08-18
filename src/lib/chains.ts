@@ -7,6 +7,7 @@ export interface ChainInfo {
   rpcUrls: string[]; // candidates, best first
   explorer: string;
   logo: string; // single char used as badge
+  network: "evm" | "solana";
 }
 
 interface ChainlistEntry {
@@ -18,6 +19,34 @@ interface ChainlistEntry {
   rpc?: Array<string | { url: string; tracking?: string }>;
   explorers?: { url: string }[];
 }
+
+// ---------- curated featured networks (UI order) ----------
+
+export interface FeaturedNetwork {
+  chainId: number;
+  label: string;
+  badge: string; // short glyph/char
+  network: "evm" | "solana";
+  match?: string[]; // substrings to match in chainlist
+  symbol?: string;
+  explorer?: string;
+  rpc?: string[];
+}
+
+export const FEATURED_NETWORKS: FeaturedNetwork[] = [
+  { chainId: 1, label: "Ethereum", badge: "Ξ", network: "evm", match: ["ethereum mainnet"] },
+  { chainId: 900, label: "Solana", badge: "S", network: "solana", symbol: "SOL", explorer: "https://solscan.io", rpc: ["https://api.mainnet-beta.solana.com"] },
+  { chainId: 4663, label: "Robinhood", badge: "R", network: "evm", match: ["robinhood"] },
+  { chainId: 8453, label: "Base", badge: "B", network: "evm", match: ["base"] },
+  { chainId: 56, label: "BNB", badge: "◆", network: "evm", match: ["bnb smart chain", "binance smart chain"] },
+  { chainId: 2741, label: "Abstract", badge: "A", network: "evm", match: ["abstract"] },
+  { chainId: 33139, label: "ApeChain", badge: "🐵", network: "evm", match: ["apechain"] },
+  { chainId: 137, label: "Polygon", badge: "P", network: "evm", match: ["polygon mainnet", "polygon pos"] },
+  { chainId: 42161, label: "Arbitrum", badge: "A", network: "evm", match: ["arbitrum one"] },
+  { chainId: 10, label: "Optimism", badge: "O", network: "evm", match: ["op mainnet", "optimism"] },
+];
+
+// ---------- chainlist loading ----------
 
 let cache: ChainInfo[] | null = null;
 
@@ -59,7 +88,6 @@ async function fetchAllChains(): Promise<ChainInfo[]> {
       /* try next source */
     }
   }
-  if (list.length === 0) throw new Error("chainlist fetch failed");
   const out: ChainInfo[] = [];
   for (const c of list) {
     const rpcs = pickRpcs(c.rpc);
@@ -73,8 +101,21 @@ async function fetchAllChains(): Promise<ChainInfo[]> {
       rpcUrls: rpcs,
       explorer: c.explorers?.[0]?.url || "",
       logo: (c.shortName || c.name || "?").trim().charAt(0).toUpperCase(),
+      network: "evm",
     });
   }
+  // virtual non-EVM networks
+  out.push({
+    chainId: 900,
+    name: "Solana",
+    shortName: "sol",
+    symbol: "SOL",
+    rpcUrl: "https://api.mainnet-beta.solana.com",
+    rpcUrls: ["https://api.mainnet-beta.solana.com"],
+    explorer: "https://solscan.io",
+    logo: "S",
+    network: "solana",
+  });
   return out;
 }
 

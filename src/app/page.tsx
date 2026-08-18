@@ -21,6 +21,7 @@ interface Chain {
   symbol: string;
   logo: string;
   explorer: string;
+  network?: "evm" | "solana";
 }
 
 interface TokenStat {
@@ -54,6 +55,7 @@ interface ScanTotals {
 interface ScanResult {
   wallet: string;
   chainId: number;
+  network?: string;
   fromBlock: number;
   toBlock: number;
   truncated: boolean;
@@ -62,6 +64,21 @@ interface ScanResult {
   tokens: TokenStat[];
   totals: ScanTotals;
   sampleTimestamps: Record<string, number>;
+}
+
+interface SolanaScanResult {
+  wallet: string;
+  truncated: boolean;
+  nativeBalanceWei: string;
+  signatureCount: number;
+  sampled: number;
+  netWei: string;
+  feesWei: string;
+  nftMoves: number;
+  nftCollections: number;
+  uniqueNfts: string[];
+  firstTs: number | null;
+  lastTs: number | null;
 }
 
 interface ContractResult {
@@ -126,13 +143,29 @@ interface BotResult {
   wallets: BotRow[];
 }
 
-type Mode = "scan" | "contract" | "bot";
+interface ResolvedLink {
+  kind: "collection" | "asset" | "wallet" | "unknown";
+  slug?: string;
+  name?: string;
+  imageUrl?: string;
+  contract?: string;
+  tokenId?: string;
+  wallet?: string;
+  chainId?: number;
+  chainName?: string;
+  contracts?: { address: string; chainId: number; chainName: string }[];
+  hint?: string;
+}
+
+type Mode = "wallet" | "collection" | "bot";
 type Result =
   | { kind: "scan"; data: ScanResult; symbol: string }
+  | { kind: "solana"; data: SolanaScanResult }
   | { kind: "contract"; data: ContractResult }
   | { kind: "bot"; data: BotResult };
 
 const ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
+const SOL_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 // ---------- helpers ----------
 
@@ -140,7 +173,11 @@ function parseWallets(text: string): string[] {
   return text
     .split(/[\s,]+/)
     .map((t) => t.trim())
-    .filter((t) => ADDR_RE.test(t));
+    .filter((t) => ADDR_RE.test(t) || SOL_RE.test(t));
+}
+
+function isOpensea(text: string): boolean {
+  return /opensea\.io/i.test(text);
 }
 
 async function jfetch(url: string) {
@@ -150,13 +187,22 @@ async function jfetch(url: string) {
   return j;
 }
 
+function Mark({ size = 26 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" style={{ display: "block" }}>
+      <rect width="32" height="32" rx="8" fill="var(--accent)" />
+      <path d="M17.8 4L7.5 18.2h6.2L12 28l10.5-14.2h-6.2z" fill="#141003" />
+    </svg>
+  );
+}
+
 // ---------- component ----------
 
 export default function Home() {
   const [chains, setChains] = useState<Chain[]>([]);
   const [chain, setChain] = useState<Chain | null>(null);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
-  const [mode, setMode] = useState<Mode>("scan");
+  const [mode, setMode] = useState<Mode>("wallet");
   const [walletInput, setWalletInput] = useState("");
   const [contractInput, setContractInput] = useState("");
   const [timeWindow, setTimeWindow] = useState("30");
@@ -165,10 +211,12 @@ export default function Home() {
   const [result, setResult] = useState<Result | null>(null);
   const [savedWallets, setSavedWallets] = useState<string[]>([]);
   const [showSaved, setShowSaved] = useState(false);
+  const [resolved, setResolved] = useState<ResolvedLink | null>(null);
+  const [resolving, setResolving] = useState(false);
   const [cardStyle, setCardStyle] = useState<CardStyle>(() => {
     if (typeof window !== "undefined") {
       try {
-        const s = localStorage.getItem("pandaCardStyle");
+        const s = localStorage.getItem("flexiniteCardStyle");
         if (s) return JSON.parse(s);
       } catch { /* ignore */ }
     }
@@ -193,23 +241,23 @@ export default function Home() {
         setChains(d.chains || []);
         if (d.chains?.length) setChain(d.chains[0]);
       })
-      .catch(() => setError("Failed to load chains"));
+      .catch(() => setError("Failed to load networks"));
   }, []);
 
   // saved wallets
   useEffect(() => {
     try {
-      const s = localStorage.getItem("pandaSavedWallets");
+      const s = localStorage.getItem("flexiniteSavedWallets");
       if (s) setSavedWallets(JSON.parse(s));
     } catch { /* ignore */ }
   }, []);
   const persistWallets = useCallback((ws: string[]) => {
     setSavedWallets(ws);
-    localStorage.setItem("pandaSavedWallets", JSON.stringify(ws));
+    localStorage.setItem("flexiniteSavedWallets", JSON.stringify(ws));
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("pandaCardStyle", JSON.stringify(cardStyle));
+    localStorage.setItem("flexiniteCardStyle", JSON.stringify(cardStyle));
   }, [cardStyle]);
 
   const addWallets = (ws: string[]) => {
@@ -217,36 +265,105 @@ export default function Home() {
     persistWallets(merged);
   };
 
+  // resolve an OpenSea link (contract field or wallet field)
+  const resolveLink = async (url: string): Promise<ResolvedLink | null> => {
+    setResolving(true);
+    setResolved(null);
+    try {
+      const d = await jfetch(`/api/resolve?input=${encodeURIComponent(url)}`);
+      if (d.kind === "unknown") {
+        setError(d.hint || "Could not resolve that OpenSea link.");
+        return null;
+      }
+      setResolved(d);
+      return d;
+    } catch (e) {
+      setError((e as Error).message);
+      return null;
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const pickChainById = (id: number | undefined) => {
+    if (!id) return;
+    const hit = chains.find((c) => c.chainId === id);
+    if (hit) setChain(hit);
+  };
+
   const runScan = async (m: Mode) => {
     setError(null);
-    if (!chain) return;
+    const rawWallet = walletInput.trim();
     const wallets = parseWallets(walletInput);
-    const contract = contractInput.trim();
+    const contractRaw = contractInput.trim();
 
-    if (m === "scan") {
-      if (wallets.length === 0) return setError("Enter a valid wallet address (0x…)");
-      const w = wallets[0];
-      setLoading(true);
-      setResult(null);
-      try {
-        const data = await jfetch(
-          `/api/scan?wallet=${w}&chainId=${chain.chainId}&window=${timeWindow}`
-        );
-        addWallets([w]);
-        setResult({ kind: "scan", data, symbol: chain.symbol });
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
+    if (m === "wallet") {
+      // OpenSea profile link as wallet input
+      if (isOpensea(rawWallet)) {
+        setLoading(true);
+        const d = await resolveLink(rawWallet);
+        if (!d) { setLoading(false); return; }
+        if (d.kind === "wallet" && d.wallet && ADDR_RE.test(d.wallet)) {
+          setWalletInput(d.wallet);
+          // fall through with resolved wallet below
+          return doEvmScan([d.wallet], m);
+        }
+        setError("That OpenSea profile link didn't resolve to a wallet address.");
         setLoading(false);
+        return;
       }
-    } else if (m === "contract") {
-      if (!ADDR_RE.test(contract)) return setError("Enter a valid contract address");
+      if (wallets.length === 0) return setError("Enter a wallet address (0x… or Solana base58) or an OpenSea profile link");
+      const w = wallets[0];
+      // auto-route Solana addresses
+      if (SOL_RE.test(w)) {
+        setLoading(true);
+        setResult(null);
+        try {
+          const data = await jfetch(`/api/scan?wallet=${w}&chainId=900&window=${timeWindow}`);
+          addWallets([w]);
+          setResult({ kind: "solana", data });
+        } catch (e) {
+          setError((e as Error).message);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+      setLoading(true);
+      setResult(null);
+      return doEvmScan(wallets, m);
+    }
+
+    if (m === "collection") {
       setLoading(true);
       setResult(null);
       try {
+        let contract = contractRaw;
+        // OpenSea collection/asset link support
+        if (isOpensea(contractRaw)) {
+          const d = await resolveLink(contractRaw);
+          if (!d) { setLoading(false); return; }
+          if (d.kind === "collection" && d.contract) {
+            contract = d.contract;
+            pickChainById(d.chainId);
+          } else if (d.kind === "asset" && d.contract) {
+            contract = d.contract;
+            if (d.chainId) pickChainById(d.chainId);
+          } else if (d.kind === "wallet") {
+            setError("That's a profile link — switch to Wallet Scan for wallets.");
+            setLoading(false);
+            return;
+          } else {
+            setError("That OpenSea link doesn't resolve to a collection contract.");
+            setLoading(false);
+            return;
+          }
+        }
+        if (!ADDR_RE.test(contract)) { setError("Enter a collection contract address or OpenSea link"); setLoading(false); return; }
+        if (!chain) { setError("Pick a network first"); setLoading(false); return; }
         const w = wallets[0];
         let url = `/api/contract?contract=${contract}&chainId=${chain.chainId}&window=${timeWindow}`;
-        if (w) url += `&wallet=${w}`;
+        if (w && ADDR_RE.test(w)) url += `&wallet=${w}`;
         const data = await jfetch(url);
         setResult({ kind: "contract", data });
       } catch (e) {
@@ -254,22 +371,56 @@ export default function Home() {
       } finally {
         setLoading(false);
       }
-    } else {
-      if (!ADDR_RE.test(contract)) return setError("Enter a collection contract address for Bot PNL");
-      if (wallets.length === 0) return setError("Enter one or more wallet addresses for Bot PNL");
-      setLoading(true);
-      setResult(null);
-      try {
-        const data = await jfetch(
-          `/api/bot?contract=${contract}&wallets=${wallets.join(",")}&chainId=${chain.chainId}&window=${timeWindow}`
-        );
-        addWallets(wallets);
-        setResult({ kind: "bot", data });
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setLoading(false);
+      return;
+    }
+
+    // bot
+    setLoading(true);
+    setResult(null);
+    try {
+      let contract = contractRaw;
+      if (isOpensea(contractRaw)) {
+        const d = await resolveLink(contractRaw);
+        if (!d) { setLoading(false); return; }
+        if ((d.kind === "collection" || d.kind === "asset") && d.contract) {
+          contract = d.contract;
+          if (d.chainId) pickChainById(d.chainId);
+        } else {
+          setError("That OpenSea link doesn't resolve to a collection contract.");
+          setLoading(false);
+          return;
+        }
       }
+      if (!ADDR_RE.test(contract)) { setError("Enter a collection contract address or OpenSea link for Bot PNL"); setLoading(false); return; }
+      if (wallets.length === 0) { setError("Enter one or more wallet addresses for Bot PNL"); setLoading(false); return; }
+      if (!chain) { setError("Pick a network first"); setLoading(false); return; }
+      const data = await jfetch(
+        `/api/bot?contract=${contract}&wallets=${wallets.filter((w) => ADDR_RE.test(w)).join(",")}&chainId=${chain.chainId}&window=${timeWindow}`
+      );
+      addWallets(wallets);
+      setResult({ kind: "bot", data });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const doEvmScan = async (wallets: string[], m: Mode) => {
+    void m;
+    if (!chain) { setError("Pick a network first"); setLoading(false); return; }
+    if (chain.network === "solana") { setError("Use a Solana address for the Solana network."); setLoading(false); return; }
+    const w = wallets[0];
+    if (!ADDR_RE.test(w)) { setError("Enter a valid EVM wallet address (0x…)"); setLoading(false); return; }
+    setResult(null);
+    try {
+      const data = await jfetch(`/api/scan?wallet=${w}&chainId=${chain.chainId}&window=${timeWindow}`);
+      addWallets([w]);
+      setResult({ kind: "scan", data, symbol: chain.symbol });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -287,16 +438,12 @@ export default function Home() {
     reader.readAsText(f);
   };
 
-  const copy = async (t: string) => {
-    try { await navigator.clipboard.writeText(t); } catch { /* ignore */ }
-  };
-
   const downloadCard = async () => {
     if (!cardRef.current) return;
-    const url = await exportCard(cardRef.current, "panda-pnl-card.png");
+    const url = await exportCard(cardRef.current, "flexinite-pnl.png");
     const a = document.createElement("a");
     a.href = url;
-    a.download = "panda-pnl-card.png";
+    a.download = "flexinite-pnl.png";
     a.click();
   };
 
@@ -331,233 +478,235 @@ export default function Home() {
   return (
     <div className="relative z-10 min-h-screen">
       {/* header */}
-      <header className="sticky top-0 z-50 flex items-center justify-between px-5 py-3 border-b backdrop-blur-xl" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--bg) 70%, transparent)" }}>
+      <header
+        className="sticky top-0 z-50 flex items-center justify-between px-5 md:px-8 py-3.5 border-b backdrop-blur-xl"
+        style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--bg) 72%, transparent)" }}
+      >
         <div className="flex items-center gap-2.5 select-none cursor-default">
-          <span className="text-2xl leading-none">🐼</span>
-          <span className="font-extrabold tracking-widest text-lg">PANDAPNL</span>
+          <Mark size={26} />
+          <span className="font-bold tracking-[0.18em] text-[15px]">FLEXINITE</span>
         </div>
-        <div className="flex items-center gap-3">
-          <button className="btn btn-ghost !py-1.5 !px-4 text-sm" onClick={() => { setResult(null); setMode("scan"); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
-            Scans
-          </button>
+        <div className="flex items-center gap-2.5">
           <button
-            className="btn btn-ghost !py-1.5 !px-3 text-sm"
+            className="btn btn-ghost !py-1.5 !px-3 !text-[13px]"
             title="Toggle theme"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           >
             {theme === "dark" ? "☀️" : "🌙"}
           </button>
-          <a className="btn btn-cyan !py-1.5 !px-4 text-sm no-underline" href="#scan">
+          <a className="btn btn-accent !py-1.5 !px-4 !text-[13px] no-underline" href="#scan">
             Scan now
           </a>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-5 pb-20">
-        {/* chain pills */}
-        <div className="flex flex-wrap justify-center gap-2.5 mt-8">
+      <main className="mx-auto max-w-6xl px-5 md:px-8 pb-24">
+        {/* hero */}
+        <section className="pt-14 md:pt-20 text-center fade-in">
+          <div className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-[0.22em] uppercase px-3 py-1.5 rounded-full mb-5"
+            style={{ border: "1px solid var(--border-strong)", color: "var(--accent)" }}>
+            <span className="dot" style={{ width: 6, height: 6, borderRadius: 99, background: "var(--accent)" }} />
+            on-chain NFT performance
+          </div>
+          <h1 className="text-4xl md:text-[52px] font-extrabold leading-[1.08] tracking-tight max-w-3xl mx-auto">
+            Know exactly where you stand — <span className="grad-text">every chain, every wallet</span>
+          </h1>
+          <p className="mt-4 text-[15px] md:text-base max-w-xl mx-auto" style={{ color: "var(--text-dim)" }}>
+            Paste a wallet, a collection address, or an OpenSea link. Flexinite reads the chain directly
+            and returns buys, mints, fees, and realized profit. No account, nothing stored.
+          </p>
+        </section>
+
+        {/* network pills */}
+        <div className="flex flex-wrap justify-center gap-2 mt-9">
           {chains.map((c) => (
             <button
               key={c.chainId}
-              className={`chain-pill ${chain?.chainId === c.chainId ? "active" : ""}`}
+              className={`pill ${chain?.chainId === c.chainId ? "active" : ""}`}
               onClick={() => setChain(c)}
             >
-              <span>{c.logo}</span>
+              <span className="mono text-xs">{c.logo}</span>
               {c.label}
             </button>
           ))}
         </div>
 
-        {/* 3-column zone */}
-        <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr_260px] gap-6 mt-8 items-start">
-          {/* left card */}
-          <aside className="panel p-5 hidden lg:block fade-in">
-            <h3 className="font-bold text-base mb-1">Get more from every scan</h3>
-            <p className="text-sm mb-4" style={{ color: "var(--text-dim)" }}>
-              Everything is computed on-chain, free, and private.
-            </p>
-            <ul className="space-y-3 text-sm">
-              <li>
-                <div className="font-semibold">📌 Save your wallets</div>
-                <div style={{ color: "var(--text-dim)" }}>Stored locally — no retyping addresses</div>
-              </li>
-              <li>
-                <div className="font-semibold">⚡ Fast scans</div>
-                <div style={{ color: "var(--text-dim)" }}>Direct RPC reads, results in seconds</div>
-              </li>
-              <li>
-                <div className="font-semibold">🎨 Your default PnL card</div>
-                <div style={{ color: "var(--text-dim)" }}>Set your style once, reuse it</div>
-              </li>
-            </ul>
-            <a href="#scan" className="btn btn-purple w-full justify-center mt-5 no-underline text-sm">
-              Start scanning
-            </a>
-          </aside>
-
-          {/* center hero + inputs */}
-          <section id="scan" className="text-center fade-in">
-            <div className="text-xs font-semibold tracking-[0.3em] uppercase mb-3" style={{ color: "var(--accent-2)" }}>
-              Real-time on-chain PnL
-            </div>
-            <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
-              Track your NFT <span className="grad-text">performance</span>
-            </h1>
-            <p className="mt-3 text-base max-w-xl mx-auto" style={{ color: "var(--text-dim)" }}>
-              Paste any wallet. See exactly where you stand — buys, mints, fees, and realized profit.
-            </p>
-
-            {/* wallet input */}
-            <div className="mt-7 max-w-2xl mx-auto">
-              <div className="relative">
-                <textarea
-                  className="glow-input w-full px-6 py-4 pr-32 text-sm resize-none mono"
-                  rows={walletInput.includes("\n") ? Math.min(5, walletInput.split("\n").length) : 1}
-                  placeholder="0x… wallet address (paste multiple for Bot PNL)"
-                  value={walletInput}
-                  onChange={(e) => setWalletInput(e.target.value)}
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                  <button
-                    className="btn btn-ghost !px-3 !py-1.5 text-xs"
-                    title="Load wallets from .txt file"
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    📄 .txt
-                  </button>
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept=".txt,.csv"
-                    className="hidden"
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }}
-                  />
-                </div>
+        {/* scanner card */}
+        <section id="scan" className="mt-8 max-w-3xl mx-auto">
+          <div className="panel p-5 md:p-6">
+            {/* mode switch */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <div className="seg">
+                <button className={mode === "wallet" ? "active" : ""} onClick={() => { setMode("wallet"); setError(null); }}>
+                  Wallet scan
+                </button>
+                <button className={mode === "collection" ? "active" : ""} onClick={() => { setMode("collection"); setError(null); }}>
+                  Collection
+                </button>
+                <button className={mode === "bot" ? "active" : ""} onClick={() => { setMode("bot"); setError(null); }}>
+                  Bot PNL
+                </button>
               </div>
-
-              {/* saved wallets chips */}
-              {savedWallets.length > 0 && (
-                <div className="mt-2.5 flex flex-wrap justify-center gap-1.5">
-                  <button className="chip" onClick={() => setShowSaved(!showSaved)}>
-                    💾 Saved ({savedWallets.length})
-                  </button>
-                  {showSaved &&
-                    savedWallets.map((w) => (
-                      <span key={w} className="chip mono">
-                        <span onClick={() => setWalletInput((p) => (p ? p + "\n" + w : w))} className="cursor-pointer">
-                          {shortAddr(w)}
-                        </span>
-                        <span className="x cursor-pointer" onClick={() => persistWallets(savedWallets.filter((x) => x !== w))}>
-                          ✕
-                        </span>
-                      </span>
-                    ))}
-                </div>
-              )}
-
-              {/* contract input */}
-              <input
-                className="glow-input w-full px-6 py-3.5 mt-3 text-sm mono"
-                placeholder="Collection contract address (required for Scan Contract & Bot PNL)"
-                value={contractInput}
-                onChange={(e) => setContractInput(e.target.value)}
-              />
-
-              {/* window selector */}
-              <div className="mt-3 flex items-center justify-center gap-2 text-xs" style={{ color: "var(--text-dim)" }}>
-                Time window:
+              <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-dim)" }}>
+                window
                 <select
-                  className="glow-input !rounded-lg px-2 py-1 text-xs"
+                  className="input !rounded-lg px-2.5 py-1.5 text-xs !w-auto"
                   value={timeWindow}
                   onChange={(e) => setTimeWindow(e.target.value)}
                 >
-                  <option value="1">Last 24h</option>
-                  <option value="7">Last 7 days</option>
-                  <option value="30">Last 30 days</option>
-                  <option value="90">Last 90 days</option>
-                  <option value="365">Last year</option>
+                  <option value="1">24h</option>
+                  <option value="7">7d</option>
+                  <option value="30">30d</option>
+                  <option value="90">90d</option>
+                  <option value="365">1y</option>
                 </select>
-                {chain && (
-                  <span className="hidden md:inline">
-                    · chain: <b style={{ color: "var(--text)" }}>{chain.label}</b> · symbol: <b style={{ color: "var(--text)" }}>{chain.symbol}</b>
-                  </span>
+              </div>
+            </div>
+
+            {/* wallet input */}
+            <div className="relative">
+              <textarea
+                className="input w-full px-4 py-3.5 pr-28 text-sm resize-none mono"
+                rows={walletInput.includes("\n") ? Math.min(5, walletInput.split("\n").length) : 1}
+                placeholder={mode === "bot" ? "0x… paste one wallet per line" : "0x… wallet, Solana address, or OpenSea profile link"}
+                value={walletInput}
+                onChange={(e) => setWalletInput(e.target.value)}
+              />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                <button
+                  className="btn btn-quiet !px-3 !py-1.5 !text-xs"
+                  title="Load wallets from .txt file"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  .txt
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".txt,.csv"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }}
+                />
+              </div>
+            </div>
+
+            {/* saved wallets chips */}
+            {savedWallets.length > 0 && (
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                <button className="chip" onClick={() => setShowSaved(!showSaved)}>
+                  Saved ({savedWallets.length})
+                </button>
+                {showSaved &&
+                  savedWallets.map((w) => (
+                    <span key={w} className="chip mono">
+                      <span onClick={() => setWalletInput((p) => (p ? p + "\n" + w : w))} className="cursor-pointer">
+                        {shortAddr(w)}
+                      </span>
+                      <span className="x cursor-pointer" onClick={() => persistWallets(savedWallets.filter((x) => x !== w))}>
+                        ✕
+                      </span>
+                    </span>
+                  ))}
+              </div>
+            )}
+
+            {/* contract input (collection + bot modes) */}
+            {mode !== "wallet" && (
+              <input
+                className="input w-full px-4 py-3.5 mt-3 text-sm mono"
+                placeholder="Collection contract address or OpenSea collection link"
+                value={contractInput}
+                onChange={(e) => { setContractInput(e.target.value); setResolved(null); }}
+              />
+            )}
+
+            {/* resolved opensea preview */}
+            {resolved && (resolved.kind === "collection" || resolved.kind === "asset") && (
+              <div className="mt-3 flex items-center gap-3 rounded-xl px-4 py-3 text-sm" style={{ background: "var(--panel-2)", border: "1px solid var(--border)" }}>
+                {resolved.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={resolved.imageUrl} alt="" className="w-9 h-9 rounded-lg object-cover" />
+                )}
+                <div className="min-w-0">
+                  <div className="font-semibold truncate">
+                    {resolved.name || resolved.slug}
+                    {resolved.kind === "asset" && resolved.tokenId ? ` #${resolved.tokenId}` : ""}
+                  </div>
+                  <div className="text-xs truncate mono" style={{ color: "var(--text-dim)" }}>
+                    {resolved.contract && shortAddr(resolved.contract)} · {resolved.chainName || "—"}
+                  </div>
+                </div>
+                {resolved.contracts && resolved.contracts.length > 1 && (
+                  <div className="ml-auto flex flex-col gap-1 text-[11px]" style={{ color: "var(--text-dim)" }}>
+                    {resolved.contracts.slice(0, 3).map((c) => (
+                      <button key={c.address} className="link-accent text-left bg-transparent border-0 p-0 cursor-pointer" onClick={() => { setContractInput(c.address); pickChainById(c.chainId); }}>
+                        {c.chainName} · {shortAddr(c.address)}
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
+            )}
 
-              {/* action buttons */}
-              <div className="mt-5 flex flex-wrap justify-center gap-3">
-                <button className="btn btn-cyan" disabled={loading} onClick={() => runScan("scan")}>
-                  {loading && mode === "scan" ? <span className="spin" /> : "🔍"} Scan
-                </button>
-                <button className="btn btn-orange" disabled={loading} onClick={() => runScan("contract")}>
-                  {loading && mode === "contract" ? <span className="spin" /> : "🔒"} Scan Contract
-                </button>
-                <button className="btn btn-purple" disabled={loading} onClick={() => runScan("bot")}>
-                  {loading && mode === "bot" ? <span className="spin" /> : "🤖"} Bot PNL
-                </button>
-              </div>
-
-              {error && (
-                <div className="mt-4 text-sm panel px-4 py-3 inline-block neg">⚠ {error}</div>
+            {/* run */}
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                className="btn btn-primary flex-1 md:flex-none md:!px-10 !py-3 !text-sm"
+                disabled={loading || resolving}
+                onClick={() => runScan(mode)}
+              >
+                {loading || resolving ? <span className="spin" /> : null}
+                {loading ? "Scanning…" : resolving ? "Resolving…" : mode === "wallet" ? "Scan wallet" : mode === "collection" ? "Scan collection" : "Run Bot PNL"}
+              </button>
+              {chain && (
+                <span className="text-xs hidden md:inline" style={{ color: "var(--text-dim)" }}>
+                  network <b style={{ color: "var(--text)" }}>{chain.label}</b> · <b style={{ color: "var(--text)" }}>{chain.symbol}</b>
+                </span>
               )}
             </div>
 
-            {/* results */}
-            <div className="mt-8 text-left">
-              {loading && (
-                <div className="panel p-10 text-center" style={{ color: "var(--text-dim)" }}>
-                  <span className="spin mr-2 align-middle" /> Scanning on-chain activity… this can take 10–40s on busy chains.
-                </div>
-              )}
+            {error && (
+              <div className="mt-4 text-sm rounded-xl px-4 py-3" style={{ background: "rgba(239,83,80,.08)", border: "1px solid rgba(239,83,80,.25)", color: "var(--neg)" }}>
+                {error}
+              </div>
+            )}
+          </div>
+        </section>
 
-              {!loading && result?.kind === "scan" && (
-                <ScanView
-                  data={result.data}
-                  symbol={result.symbol}
-                  explorer={chain?.explorer || ""}
-                  onCopy={copy}
-                  onCard={(s) => { if (s) setCardStyle((prev) => ({ ...prev, ...s })); setCardModal(true); }}
-                  cardAvailable={!!cardData}
-                />
-              )}
-              {!loading && result?.kind === "contract" && (
-                <ContractView data={result.data} symbol={chain?.symbol || "ETH"} />
-              )}
-              {!loading && result?.kind === "bot" && (
-                <BotView data={result.data} symbol={chain?.symbol || "ETH"} />
-              )}
-              {!loading && !result && !error && (
-                <div className="panel p-10 text-center" style={{ color: "var(--text-dim)" }}>
-                  <div className="text-3xl mb-2">💎</div>
-                  No scans yet — paste a wallet above and hit <b>Scan</b>.
-                </div>
-              )}
+        {/* results */}
+        <div className="mt-10">
+          {loading && (
+            <div className="panel p-10 text-center text-sm" style={{ color: "var(--text-dim)" }}>
+              <span className="spin mr-2 align-middle" /> Reading on-chain activity… this can take 10–40s on busy chains.
             </div>
-          </section>
+          )}
 
-          {/* right card */}
-          <aside className="panel p-5 hidden lg:block fade-in">
-            <h3 className="font-bold text-base mb-3">How to use</h3>
-            <div className="space-y-3">
-              <div className="rounded-xl p-3 text-sm" style={{ background: "rgba(139,92,246,.08)", border: "1px solid var(--border)" }}>
-                <b>1 · Wallet Scan</b>
-                <div style={{ color: "var(--text-dim)" }}>Paste a wallet → full NFT PnL: mints, buys, sales, fees.</div>
-              </div>
-              <div className="rounded-xl p-3 text-sm" style={{ background: "rgba(251,146,60,.08)", border: "1px solid var(--border)" }}>
-                <b>2 · Scan Contract</b>
-                <div style={{ color: "var(--text-dim)" }}>Paste a collection address → holders, mints, supply, mint price.</div>
-              </div>
-              <div className="rounded-xl p-3 text-sm" style={{ background: "rgba(34,211,238,.08)", border: "1px solid var(--border)" }}>
-                <b>3 · Bot PNL</b>
-                <div style={{ color: "var(--text-dim)" }}>Multiple wallets + contract → side-by-side PnL for every wallet.</div>
-              </div>
+          {!loading && result?.kind === "scan" && (
+            <ScanView
+              data={result.data}
+              symbol={result.symbol}
+              explorer={chain?.explorer || ""}
+              onCard={() => setCardModal(true)}
+            />
+          )}
+          {!loading && result?.kind === "solana" && <SolanaView data={result.data} />}
+          {!loading && result?.kind === "contract" && (
+            <ContractView data={result.data} symbol={chain?.symbol || "ETH"} />
+          )}
+          {!loading && result?.kind === "bot" && (
+            <BotView data={result.data} symbol={chain?.symbol || "ETH"} />
+          )}
+          {!loading && !result && !error && (
+            <div className="panel p-10 text-center text-sm" style={{ color: "var(--text-dim)" }}>
+              <div className="mx-auto mb-3 w-9 h-9"><Mark size={36} /></div>
+              No scans yet — paste a wallet or OpenSea link above and hit <b style={{ color: "var(--text)" }}>Scan</b>.
             </div>
-          </aside>
+          )}
         </div>
 
         {/* footer */}
-        <footer className="mt-16 text-center text-xs" style={{ color: "var(--text-dim)" }}>
-          PandaPnL · on-chain NFT performance scanner · data read directly from public RPCs · nothing is stored on our servers
+        <footer className="mt-20 pt-6 text-center text-xs border-t" style={{ color: "var(--text-faint)", borderColor: "var(--border)" }}>
+          Flexinite · on-chain NFT performance · data read directly from public RPCs and Blockscout · nothing stored on our servers
         </footer>
       </main>
 
@@ -565,7 +714,7 @@ export default function Home() {
       {cardModal && cardData && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,.7)" }}
+          style={{ background: "rgba(0,0,0,.72)", backdropFilter: "blur(4px)" }}
           onClick={() => setCardModal(false)}
         >
           <div className="max-w-md w-full" onClick={(e) => e.stopPropagation()}>
@@ -575,16 +724,16 @@ export default function Home() {
             <div className="panel p-4 mt-3">
               <div className="flex flex-wrap items-center gap-2 mb-3">
                 <span className="text-xs" style={{ color: "var(--text-dim)" }}>Accent:</span>
-                {["#8b5cf6", "#22d3ee", "#fb923c", "#34d399", "#f472b6"].map((c) => (
+                {["#f5b13d", "#2fbf71", "#5b8def", "#ef5b5b", "#b57bff"].map((c) => (
                   <button
                     key={c}
-                    className="w-6 h-6 rounded-full border-2"
+                    className="w-6 h-6 rounded-full border-2 cursor-pointer"
                     style={{ background: c, borderColor: cardStyle.accent === c ? "#fff" : "transparent" }}
                     onClick={() => setCardStyle({ ...cardStyle, accent: c })}
                   />
                 ))}
                 <select
-                  className="glow-input !rounded-lg px-2 py-1 text-xs ml-auto"
+                  className="input !rounded-lg px-2 py-1 text-xs ml-auto"
                   value={cardStyle.theme}
                   onChange={(e) => setCardStyle({ ...cardStyle, theme: e.target.value as CardStyle["theme"] })}
                 >
@@ -594,14 +743,14 @@ export default function Home() {
                 </select>
               </div>
               <div className="flex gap-2">
-                <button className="btn btn-purple flex-1 justify-center text-sm" onClick={downloadCard}>
-                  ⬇ Download PNG
+                <button className="btn btn-accent flex-1 justify-center text-sm" onClick={downloadCard}>
+                  Download PNG
                 </button>
                 <button className="btn btn-ghost text-sm" onClick={() => setCardModal(false)}>
                   Close
                 </button>
               </div>
-              <div className="text-[10px] mt-2" style={{ color: "var(--text-dim)" }}>
+              <div className="text-[10px] mt-2" style={{ color: "var(--text-faint)" }}>
                 Your card style is saved as default for next time.
               </div>
             </div>
@@ -619,7 +768,7 @@ function StatCards({ items }: { items: { label: string; value: string; cls?: str
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
       {items.map((it) => (
         <div key={it.label} className="panel p-4">
-          <div className="text-xs mb-1" style={{ color: "var(--text-dim)" }}>{it.label}</div>
+          <div className="text-[11px] uppercase tracking-wider mb-1.5" style={{ color: "var(--text-faint)" }}>{it.label}</div>
           <div className={`text-lg font-bold ${it.cls || ""}`}>{it.value}</div>
         </div>
       ))}
@@ -636,9 +785,7 @@ function ScanView({
   data: ScanResult;
   symbol: string;
   explorer: string;
-  onCopy: (t: string) => void;
-  onCard: (s?: Partial<CardStyle>) => void;
-  cardAvailable: boolean;
+  onCard: () => void;
 }) {
   const t = data.totals;
   const pnl = BigInt(t.realizedPnlWei || "0");
@@ -646,16 +793,16 @@ function ScanView({
     <div className="fade-in">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h2 className="text-lg font-bold">
-          Wallet PnL — <span className="mono">{shortAddr(data.wallet, 10, 8)}</span>
+          Wallet PnL — <span className="mono text-base">{shortAddr(data.wallet, 10, 8)}</span>
         </h2>
-        <button className="btn btn-cyan !py-1.5 text-sm" onClick={() => onCard()}>
-          🎴 PnL Card
+        <button className="btn btn-ghost !py-1.5 text-sm" onClick={onCard}>
+          PnL Card →
         </button>
       </div>
 
       {data.truncated && (
-        <div className="panel px-4 py-2 mb-4 text-xs" style={{ color: "var(--accent-3)" }}>
-          ⚠ Long history detected — showing the most recent ~150k blocks. Use a smaller time window for a full picture.
+        <div className="panel px-4 py-2.5 mb-4 text-xs" style={{ color: "var(--accent)" }}>
+          Long history detected — showing the most recent activity window. Use a smaller time window for a full picture.
         </div>
       )}
 
@@ -700,15 +847,13 @@ function ScanView({
                 <tr key={`${tk.contract}:${tk.tokenId}`}>
                   <td>
                     {href ? (
-                      <a href={href} target="_blank" rel="noreferrer" className="mono" style={{ color: "var(--accent-2)" }}>
+                      <a href={href} target="_blank" rel="noreferrer" className="mono link-accent">
                         {shortAddr(tk.contract)} #{tk.tokenId}
                       </a>
                     ) : (
                       <span className="mono">{shortAddr(tk.contract)} #{tk.tokenId}</span>
                     )}
-                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,.15)", color: "var(--accent)" }}>
-                      {tk.standard === "721" ? "721" : "1155"}
-                    </span>
+                    <span className="ml-2 tag">{tk.standard === "721" ? "721" : "1155"}</span>
                   </td>
                   <td>{fmtWei(tk.held, 0, 0)}</td>
                   <td>{tk.mints}</td>
@@ -736,17 +881,69 @@ function ScanView({
   );
 }
 
+function SolanaView({ data }: { data: SolanaScanResult }) {
+  return (
+    <div className="fade-in">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <h2 className="text-lg font-bold">
+          Solana Activity — <span className="mono text-base">{shortAddr(data.wallet, 8, 6)}</span>
+        </h2>
+        <span className="tag">SOLANA · sampled {data.sampled}/{data.signatureCount} txs</span>
+      </div>
+
+      {data.truncated && (
+        <div className="panel px-4 py-2.5 mb-4 text-xs" style={{ color: "var(--accent)" }}>
+          Very active wallet — showing the {data.sampled} most recent transactions inside the window.
+        </div>
+      )}
+
+      <StatCards
+        items={[
+          { label: "Net SOL flow", value: `${fmtWei(data.netWei)} SOL`, cls: pnlClass(data.netWei) },
+          { label: "Transactions", value: fmtInt(data.signatureCount) },
+          { label: "NFT-like transfers", value: fmtInt(data.nftMoves) },
+          { label: "Distinct NFTs touched", value: fmtInt(data.nftCollections) },
+        ]}
+      />
+      <StatCards
+        items={[
+          { label: "SOL balance", value: `${fmtWei(data.nativeBalanceWei)} SOL` },
+          { label: "Est. fees", value: `${fmtWei(data.feesWei)} SOL` },
+          { label: "First activity", value: data.firstTs ? fmtDateTime(data.firstTs) : "—" },
+          { label: "Last activity", value: data.lastTs ? fmtDateTime(data.lastTs) : "—" },
+        ]}
+      />
+
+      {data.uniqueNfts.length > 0 && (
+        <div className="panel p-5">
+          <h3 className="font-bold text-sm mb-3">NFT mints touched in window</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {data.uniqueNfts.map((m) => (
+              <a key={m} className="chip mono no-underline" href={`https://solscan.io/token/${m}`} target="_blank" rel="noreferrer">
+                {shortAddr(m, 6, 4)}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="text-xs mt-3" style={{ color: "var(--text-faint)" }}>
+        Solana scans read the public RPC directly — volume and NFT activity are sampled from recent transactions in the window.
+      </div>
+    </div>
+  );
+}
+
 function ContractView({ data, symbol }: { data: ContractResult; symbol: string }) {
   const w = data.wallet;
   return (
     <div className="fade-in">
       <h2 className="text-lg font-bold mb-4">
-        Contract Scan — {data.name || data.symbol || shortAddr(data.contract)}
+        Collection — {data.name || data.symbol || shortAddr(data.contract)}
       </h2>
 
       {data.truncated && (
-        <div className="panel px-4 py-2 mb-4 text-xs" style={{ color: "var(--accent-3)" }}>
-          ⚠ Window limited — showing the most recent ~150k blocks of activity.
+        <div className="panel px-4 py-2.5 mb-4 text-xs" style={{ color: "var(--accent)" }}>
+          Window limited — showing the most recent activity only.
         </div>
       )}
 

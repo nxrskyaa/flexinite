@@ -7,7 +7,7 @@ export interface CardStyle {
   theme: "dark" | "light" | "gradient";
 }
 
-export const defaultCardStyle: CardStyle = { accent: "#8b5cf6", theme: "gradient" };
+export const defaultCardStyle: CardStyle = { accent: "#f5b13d", theme: "dark" };
 
 export interface CardData {
   wallet: string;
@@ -29,20 +29,30 @@ export interface CardData {
   toBlock: number;
 }
 
+function Mark({ color }: { color: string }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="8" fill={color} />
+      <path d="M17.8 4L7.5 18.2h6.2L12 28l10.5-14.2h-6.2z" fill="#141003" />
+    </svg>
+  );
+}
+
 export default function PnLCard({ data, style }: { data: CardData; style: CardStyle }) {
   const pnl = BigInt(data.realizedPnlWei || "0");
   const isUp = pnl > 0n;
   const isDown = pnl < 0n;
-  const pnlColor = isUp ? "#34d399" : isDown ? "#f87171" : "#9aa0c3";
+  const pnlColor = isUp ? "#2fbf71" : isDown ? "#ef5350" : "#94918a";
+  const accent = style.accent;
 
   const bg =
     style.theme === "light"
-      ? "#f6f7ff"
+      ? "#faf8f4"
       : style.theme === "gradient"
-      ? `linear-gradient(145deg, #100f24 0%, #1a1035 55%, #0b1b2e 100%)`
-      : "#0b0c1a";
-  const textColor = style.theme === "light" ? "#171a33" : "#eef0ff";
-  const dim = style.theme === "light" ? "#5b6086" : "#9aa0c3";
+      ? "linear-gradient(155deg, #12100a 0%, #1a1509 55%, #0a0908 100%)"
+      : "#0b0a08";
+  const textColor = style.theme === "light" ? "#191713" : "#f4f2ee";
+  const dim = style.theme === "light" ? "#6b675e" : "#94918a";
 
   const rows: Array<[string, string]> = [
     ["Spent", `${fmtWei(data.spentWei)} ${data.symbol}`],
@@ -59,19 +69,19 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       style={{
         width: "100%",
         maxWidth: 420,
-        borderRadius: 20,
+        borderRadius: 16,
         padding: 22,
         background: bg,
         color: textColor,
-        border: `1px solid ${style.accent}55`,
-        boxShadow: `0 0 40px ${style.accent}33`,
+        border: `1px solid ${style.theme === "light" ? "rgba(24,18,6,.12)" : "rgba(255,255,255,.1)"}`,
+        boxShadow: style.theme === "light" ? "0 10px 30px rgba(24,18,6,.1)" : "0 10px 40px rgba(0,0,0,.5)",
         fontFamily: "Inter, system-ui, sans-serif",
         margin: "0 auto",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, letterSpacing: 2 }}>
-          <span style={{ fontSize: 20 }}>🐼</span> PANDAPNL
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, letterSpacing: 1.5, fontSize: 14 }}>
+          <Mark color={accent} /> FLEXINITE
         </div>
         <div
           style={{
@@ -80,7 +90,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
             gap: 6,
             fontSize: 12,
             padding: "4px 10px",
-            borderRadius: 999,
+            borderRadius: 8,
             border: `1px solid ${dim}44`,
             color: dim,
           }}
@@ -94,9 +104,9 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       </div>
 
       <div style={{ marginTop: 18 }}>
-        <div style={{ fontSize: 12, color: dim }}>REALIZED PNL</div>
+        <div style={{ fontSize: 11, letterSpacing: 1.5, color: dim, textTransform: "uppercase" }}>Realized PnL</div>
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 2 }}>
-          <span style={{ fontSize: 34, fontWeight: 800, color: pnlColor }}>
+          <span style={{ fontSize: 32, fontWeight: 800, color: pnlColor }}>
             {isUp ? "+" : ""}{fmtWei(pnl)} {data.symbol}
           </span>
           <span
@@ -135,7 +145,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
 
       <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", fontSize: 10, color: dim }}>
         <span>blocks {data.fromBlock.toLocaleString()} → {data.toBlock.toLocaleString()}</span>
-        <span style={{ fontWeight: 700, letterSpacing: 1 }}>PANDAPNL.APP</span>
+        <span style={{ fontWeight: 700, letterSpacing: 1.5 }}>FLEXINITE</span>
       </div>
     </div>
   );

@@ -13,12 +13,14 @@ import {
   bsTxDetails,
 } from "@/lib/blockscout";
 import { rateLimited, clientIp, badRequest, tooMany } from "../_limit";
+import { scanSolanaWallet } from "@/lib/solana";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
+const SOL_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 async function scanViaBlockscout(
   bs: string,
@@ -170,9 +172,57 @@ export async function GET(req: NextRequest) {
   const fromBlock = sp.get("fromBlock");
   const windowDays = sp.get("window");
 
-  if (!wallet || !ADDR_RE.test(wallet)) return badRequest("Invalid wallet address");
+  if (!wallet) return badRequest("Missing wallet address");
   const chainId = parseInt(chainIdRaw || "1", 10);
   if (isNaN(chainId)) return badRequest("Invalid chainId");
+
+  // ---- Solana path ----
+  if (chainId === 900 || SOL_RE.test(wallet)) {
+    if (!SOL_RE.test(wallet)) return badRequest("Invalid Solana address");
+    try {
+      const days = windowDays ? parseFloat(windowDays) : 30;
+      const r = await scanSolanaWallet(wallet, days);
+      return Response.json({
+        network: "solana",
+        wallet: r.wallet,
+        chainId: 900,
+        truncated: r.truncated,
+        nativeBalanceWei: r.nativeBalanceWei,
+        gasUsedWei: r.feesWei,
+        signatureCount: r.signatureCount,
+        sampled: r.sampled,
+        solSpentWei: r.solSpentWei,
+        solReceivedWei: r.solReceivedWei,
+        netWei: r.netWei,
+        feesWei: r.feesWei,
+        nftMoves: r.nftMoves,
+        nftCollections: r.nftMints,
+        uniqueNfts: r.uniqueNfts,
+        firstTs: r.firstTs,
+        lastTs: r.lastTs,
+        totals: {
+          spentWei: r.solSpentWei,
+          receivedWei: r.solReceivedWei,
+          gasWei: r.feesWei,
+          realizedPnlWei: r.netWei,
+          realizedPnlPct: null,
+          nftsBought: 0,
+          nftsSold: 0,
+          nftsMinted: 0,
+          currentHeld: r.nftMints,
+        },
+        tokens: [],
+        sampleTimestamps: {},
+      });
+    } catch (e) {
+      return Response.json(
+        { error: "Solana scan failed", detail: String((e as Error).message || e) },
+        { status: 500 }
+      );
+    }
+  }
+
+  if (!ADDR_RE.test(wallet)) return badRequest("Invalid wallet address");
 
   try {
     const T0 = Date.now();

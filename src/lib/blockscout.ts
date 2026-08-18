@@ -10,7 +10,7 @@ const KNOWN_INSTANCES: Record<number, string> = {
   42161: "https://arbitrum.blockscout.com",
   8453: "https://base.blockscout.com",
   137: "https://polygon.blockscout.com",
-  56: "https://bsc.blockscout.com",
+  4663: "https://robinhoodchain.blockscout.com",
   100: "https://gnosis.blockscout.com",
   43114: "https://avax.blockscout.com",
   250: "https://ftm.blockscout.com",
