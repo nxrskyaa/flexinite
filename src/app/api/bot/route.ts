@@ -138,15 +138,24 @@ export async function GET(req: NextRequest) {
             const latestHex = await rpcCall(candidate, "eth_blockNumber", [], 3000);
             const latest = parseInt(latestHex, 16);
             const result = new Map<string, { incoming: Awaited<ReturnType<typeof rpcCall>>; outgoing: Awaited<ReturnType<typeof rpcCall>> }>();
+            let successfulWallets = 0;
             await poolFn(wallets, 5, async (w) => {
               const wt = padAddress(w);
-              const [incoming, outgoing] = await Promise.all([
-                rpcCall(candidate, "eth_getLogs", [{ address: contract, fromBlock: `0x${fromB.toString(16)}`, toBlock: latestHex, topics: [[ERC721_TRANSFER_TOPIC], null, [wt]] }], 6000),
-                rpcCall(candidate, "eth_getLogs", [{ address: contract, fromBlock: `0x${fromB.toString(16)}`, toBlock: latestHex, topics: [[ERC721_TRANSFER_TOPIC], [wt]] }], 6000),
-              ]);
-              if (!Array.isArray(incoming) || !Array.isArray(outgoing)) throw new Error("Invalid eth_getLogs response");
-              result.set(w, { incoming, outgoing });
+              try {
+                const [incoming, outgoing] = await Promise.all([
+                  rpcCall(candidate, "eth_getLogs", [{ address: contract, fromBlock: `0x${fromB.toString(16)}`, toBlock: latestHex, topics: [[ERC721_TRANSFER_TOPIC], null, [wt]] }], 6000),
+                  rpcCall(candidate, "eth_getLogs", [{ address: contract, fromBlock: `0x${fromB.toString(16)}`, toBlock: latestHex, topics: [[ERC721_TRANSFER_TOPIC], [wt]] }], 6000),
+                ]);
+                if (!Array.isArray(incoming) || !Array.isArray(outgoing)) throw new Error("Invalid eth_getLogs response");
+                result.set(w, { incoming, outgoing });
+                successfulWallets++;
+              } catch {
+                // A busy wallet-specific RPC query must not abort every other
+                // wallet in this batch. The row stays present with zero moves.
+                result.set(w, { incoming: [], outgoing: [] });
+              }
             });
+            if (successfulWallets === 0) throw new Error("No wallet-indexed log query succeeded");
             for (const [w, logs] of result) logsByWallet.set(w, logs);
             winner = candidate;
             latestBlock = latest;
