@@ -9,8 +9,13 @@ export interface CardStyle {
   theme: "dark" | "light" | "gradient" | "holo" | "gold";
   currency?: CardCurrency;
   hideWallet?: boolean;
+  username?: string;
   bgMode?: "none" | "image" | "video";
   bgUrl?: string;
+  bgX?: number;
+  bgY?: number;
+  bgScale?: number;
+  frame?: "clean" | "editorial" | "vault" | "signal";
 }
 
 export const defaultCardStyle: CardStyle = {
@@ -18,7 +23,12 @@ export const defaultCardStyle: CardStyle = {
   theme: "dark",
   currency: "native",
   hideWallet: false,
+  username: "",
   bgMode: "none",
+  bgX: 50,
+  bgY: 50,
+  bgScale: 100,
+  frame: "clean",
 };
 
 export interface CardData {
@@ -154,6 +164,17 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const activity = data.mints + data.buys + data.sales;
   const projectName = data.projectName?.trim() || "NFT Portfolio";
   const period = [data.firstTs ? fmtDate(data.firstTs) : null, data.lastTs ? fmtDate(data.lastTs) : null].filter(Boolean).join(" — ");
+  const bgPosition = `${style.bgX ?? 50}% ${style.bgY ?? 50}%`;
+  const bgScale = (style.bgScale ?? 100) / 100;
+  const username = style.username?.trim().replace(/^@+/, "");
+  const frame = style.frame || "clean";
+  const frameStyle = frame === "editorial"
+    ? { border: `2px solid ${accent}`, borderRadius: 18, boxShadow: `inset 0 0 0 5px ${p.bg}, 0 24px 70px rgba(0,0,0,.38)` }
+    : frame === "vault"
+      ? { border: `1px solid ${accent}`, borderRadius: 8, boxShadow: `inset 0 0 0 1px ${p.border}, 0 24px 70px rgba(0,0,0,.38)` }
+      : frame === "signal"
+        ? { border: `1px solid ${p.border}`, borderRadius: 24, boxShadow: `inset 0 0 0 1px ${accent}44, 0 24px 70px rgba(0,0,0,.38)` }
+        : { border: `1px solid ${p.border}`, borderRadius: 24, boxShadow: "0 24px 70px rgba(0,0,0,.38)" };
 
   return (
     <div
@@ -161,11 +182,11 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
         width: "100%",
         maxWidth: 420,
         aspectRatio: "4 / 5",
-        borderRadius: 24,
         background: p.bg,
         color: p.text,
-        border: `1px solid ${p.border}`,
-        boxShadow: "0 24px 70px rgba(0,0,0,.38)",
+        border: frameStyle.border,
+        borderRadius: frameStyle.borderRadius,
+        boxShadow: frameStyle.boxShadow,
         fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         margin: "0 auto",
         padding: 24,
@@ -179,11 +200,12 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       <div aria-hidden style={{ position: "absolute", width: 260, height: 260, borderRadius: "50%", right: -130, top: -145, background: accent, opacity: style.theme === "light" ? 0.09 : 0.1, filter: "blur(12px)" }} />
       {hasCustomBg && style.bgMode === "image" && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={style.bgUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.17 }} />
+        <img src={style.bgUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: bgPosition, transform: `scale(${bgScale})`, transformOrigin: bgPosition, opacity: 0.22 }} />
       )}
-      {hasCustomBg && style.bgMode === "video" && <video src={style.bgUrl} autoPlay muted loop playsInline style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.17 }} />}
-      {hasCustomBg && <div aria-hidden style={{ position: "absolute", inset: 0, background: style.theme === "light" ? "rgba(244,241,235,.82)" : "rgba(16,16,16,.76)" }} />}
-
+      {hasCustomBg && style.bgMode === "video" && <video src={style.bgUrl} autoPlay muted loop playsInline style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: bgPosition, transform: `scale(${bgScale})`, transformOrigin: bgPosition, opacity: 0.22 }} />}
+      {hasCustomBg && <div aria-hidden style={{ position: "absolute", inset: 0, background: style.theme === "light" ? "rgba(244,241,235,.79)" : "rgba(16,16,16,.70)" }} />}
+      {frame === "signal" && <div aria-hidden style={{ position: "absolute", inset: 11, border: `1px solid ${accent}88`, borderRadius: 16, pointerEvents: "none" }} />}
+      {frame === "vault" && <><div aria-hidden style={{ position: "absolute", top: 12, left: 12, width: 20, height: 20, borderTop: `2px solid ${accent}`, borderLeft: `2px solid ${accent}` }} /><div aria-hidden style={{ position: "absolute", right: 12, bottom: 12, width: 20, height: 20, borderRight: `2px solid ${accent}`, borderBottom: `2px solid ${accent}` }} /></>}
       <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <BrandMark color={accent} />
@@ -198,6 +220,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
         <div style={{ color: p.faint, fontSize: 10, fontWeight: 650, letterSpacing: 1.6, textTransform: "uppercase" }}>Collection performance</div>
         <div style={{ marginTop: 6, fontSize: 24, lineHeight: 1.12, fontWeight: 600, letterSpacing: -0.55, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{projectName}</div>
         {!style.hideWallet && <div style={{ marginTop: 7, color: p.muted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11 }}>{shortWallet(data.wallet)}</div>}
+        {username && <div style={{ marginTop: 7, color: accent, fontSize: 11, fontWeight: 650, letterSpacing: .15 }}>@{username}</div>}
       </div>
 
       <div style={{ position: "relative", zIndex: 1, marginTop: 24, padding: "20px 20px 18px", borderRadius: 18, background: p.surfaceStrong, border: `1px solid ${p.border}` }}>
@@ -231,6 +254,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
         <span>{period || `${fmtInt(data.mints)} mint · ${fmtInt(data.buys)} buy · ${fmtInt(data.sales)} sale`}</span>
         <span style={{ fontWeight: 650, letterSpacing: .7 }}>{displayCurrency === "native" ? data.symbol : displayCurrency.toUpperCase()}</span>
       </div>
+      <div style={{ position: "relative", zIndex: 1, marginTop: 9, textAlign: "center", color: p.faint, fontSize: 9, letterSpacing: .8, fontWeight: 650 }}>FLEXINITE <span style={{ opacity: .65 }}>BY NXRLABS</span></div>
     </div>
   );
 }

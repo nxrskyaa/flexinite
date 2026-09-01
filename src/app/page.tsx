@@ -870,34 +870,57 @@ export default function Home() {
                 </label>
               </div>
 
+              <div className="grid grid-cols-1 gap-3 mb-3">
+                <label className="text-xs">
+                  <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Display name / username</span>
+                  <input
+                    className="input w-full px-3 py-2 text-xs"
+                    placeholder="e.g. nxrskyaa (will show as @nxrskyaa)"
+                    maxLength={32}
+                    value={cardStyle.username || ""}
+                    onChange={(e) => setCardStyle({ ...cardStyle, username: e.target.value })}
+                  />
+                </label>
+                <div className="text-xs">
+                  <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Frame</span>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {([
+                      ["clean", "Clean"], ["editorial", "Edge"], ["vault", "Vault"], ["signal", "Signal"],
+                    ] as const).map(([frame, label]) => (
+                      <button
+                        key={frame}
+                        className="rounded-lg px-2 py-2 text-[10px] font-semibold cursor-pointer"
+                        style={{ border: `1px solid ${cardStyle.frame === frame ? cardStyle.accent : "var(--border)"}`, background: cardStyle.frame === frame ? "var(--panel-2)" : "transparent", color: "var(--text-dim)" }}
+                        onClick={() => setCardStyle({ ...cardStyle, frame })}
+                      >{label}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               {/* custom art background */}
-              <div className="flex flex-wrap items-center gap-2 mb-3">
-                <span className="text-xs" style={{ color: "var(--text-dim)" }}>Card art:</span>
-                <button
-                  className="btn btn-ghost !py-1 text-xs"
-                  onClick={() => bgFileRef.current?.click()}
-                >
-                  {cardStyle.bgMode === "none" ? "Upload image / video" : "Change"}
-                </button>
-                {cardStyle.bgMode !== "none" && (
-                  <button
-                    className="btn btn-ghost !py-1 text-xs"
-                    style={{ color: "var(--neg)" }}
-                    onClick={() => setCardStyle({ ...cardStyle, bgMode: "none", bgUrl: undefined })}
-                  >
-                    Remove
+              <div className="rounded-xl p-3 mb-3" style={{ border: "1px solid var(--border)", background: "var(--panel-2)" }}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium" style={{ color: "var(--text-dim)" }}>Card art</span>
+                  <button className="btn btn-ghost !py-1 text-xs" onClick={() => bgFileRef.current?.click()}>
+                    {cardStyle.bgMode === "none" ? "Upload image / video" : "Change art"}
                   </button>
+                  {cardStyle.bgMode !== "none" && <button className="btn btn-ghost !py-1 text-xs" style={{ color: "var(--neg)" }} onClick={() => setCardStyle({ ...cardStyle, bgMode: "none", bgUrl: undefined })}>Remove</button>}
+                  <input ref={bgFileRef} type="file" accept="image/*,video/*" className="hidden" onChange={onBgUpload} />
+                </div>
+                {cardStyle.bgMode !== "none" && (
+                  <div className="grid grid-cols-3 gap-2 mt-3">
+                    {([
+                      ["Position X", "bgX", cardStyle.bgX ?? 50], ["Position Y", "bgY", cardStyle.bgY ?? 50], ["Zoom", "bgScale", cardStyle.bgScale ?? 100],
+                    ] as const).map(([label, key, value]) => (
+                      <label key={key} className="text-[10px]" style={{ color: "var(--text-faint)" }}>
+                        <span className="flex justify-between mb-1"><span>{label}</span><b style={{ color: "var(--text-dim)" }}>{value}%</b></span>
+                        <input className="w-full accent-current" style={{ accentColor: cardStyle.accent }} type="range" min={key === "bgScale" ? 100 : 0} max={key === "bgScale" ? 180 : 100} value={value} onChange={(e) => setCardStyle({ ...cardStyle, [key]: Number(e.target.value) })} />
+                      </label>
+                    ))}
+                  </div>
                 )}
-                <input
-                  ref={bgFileRef}
-                  type="file"
-                  accept="image/*,video/*"
-                  className="hidden"
-                  onChange={onBgUpload}
-                />
-                <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
-                  video shows live on the card · downloads as current frame
-                </span>
+                <div className="text-[10px] mt-2" style={{ color: "var(--text-faint)" }}>Move the art, zoom it, then choose a frame — it stays on your card and in the PNG.</div>
               </div>
 
               <div className="flex gap-2">
