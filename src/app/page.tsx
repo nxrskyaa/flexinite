@@ -226,13 +226,14 @@ export default function Home() {
     if (typeof window !== "undefined") {
       try {
         const s = localStorage.getItem("flexiniteCardStyle");
-        if (s) return JSON.parse(s);
+        if (s) return { ...defaultCardStyle, ...JSON.parse(s) };
       } catch { /* ignore */ }
     }
     return defaultCardStyle;
   });
   const [cardModal, setCardModal] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [cardRates, setCardRates] = useState<{ usd: number | null; idr: number | null }>({ usd: null, idr: null });
   const cardRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bgFileRef = useRef<HTMLInputElement>(null);
@@ -270,6 +271,16 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem("flexiniteCardStyle", JSON.stringify(cardStyle));
   }, [cardStyle]);
+
+  useEffect(() => {
+    if (!cardModal || !symbol) return;
+    let active = true;
+    fetch(`/api/rates?symbol=${encodeURIComponent(symbol)}`)
+      .then((r) => r.json())
+      .then((d) => { if (active) setCardRates({ usd: Number(d.usd) || null, idr: Number(d.idr) || null }); })
+      .catch(() => { if (active) setCardRates({ usd: null, idr: null }); });
+    return () => { active = false; };
+  }, [cardModal, symbol]);
 
   const addWallets = (ws: string[]) => {
     const merged = [...new Set([...savedWallets, ...ws])].slice(0, 200);
@@ -501,9 +512,12 @@ export default function Home() {
       const t = d.totals;
       return {
         wallet: t.walletCount === 1 ? d.wallets[0]?.wallet || d.contract : `${t.walletCount} wallets`,
+        projectName: d.name || d.symbol || d.floor?.slug || shortAddr(d.contract),
         chainLabel: chain?.label || chain?.name || "Chain",
         chainLogo: chain?.logo || "◈",
         symbol: chain?.symbol || "ETH",
+        nativeUsd: cardRates.usd,
+        nativeIdr: cardRates.idr,
         spentWei: t.spentWei,
         receivedWei: t.receivedWei,
         gasWei: "0",
@@ -527,9 +541,12 @@ export default function Home() {
     const last = ts[ts.length - 1];
     return {
       wallet: d.wallet,
+      projectName: "Wallet portfolio",
       chainLabel: chain?.label || chain?.name || `Chain ${d.chainId}`,
       chainLogo: chain?.logo || "Ξ",
       symbol: result.symbol,
+      nativeUsd: cardRates.usd,
+      nativeIdr: cardRates.idr,
       spentWei: d.totals.spentWei,
       receivedWei: d.totals.receivedWei,
       gasWei: d.totals.gasWei,
@@ -544,7 +561,7 @@ export default function Home() {
       fromBlock: d.fromBlock,
       toBlock: d.toBlock,
     };
-  }, [result, chain]);
+  }, [result, chain, cardRates]);
 
   return (
     <div className="relative z-10 min-h-screen">
@@ -784,7 +801,7 @@ export default function Home() {
       {/* PnL card modal */}
       {cardModal && cardData && (
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[100] flex items-start justify-center p-4 overflow-y-auto"
           style={{ background: "rgba(0,0,0,.72)", backdropFilter: "blur(4px)" }}
           onClick={() => setCardModal(false)}
         >
@@ -793,27 +810,60 @@ export default function Home() {
               <PnLCard data={cardData} style={cardStyle} />
             </div>
             <div className="panel p-4 mt-3">
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <label className="text-xs">
+                  <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Card theme</span>
+                  <select
+                    className="input !rounded-lg px-2 py-2 text-xs w-full"
+                    value={cardStyle.theme}
+                    onChange={(e) => setCardStyle({ ...cardStyle, theme: e.target.value as CardStyle["theme"] })}
+                  >
+                    <option value="dark">Graphite</option>
+                    <option value="light">Ivory</option>
+                    <option value="holo">Midnight</option>
+                    <option value="gold">Espresso</option>
+                    <option value="gradient">Obsidian</option>
+                  </select>
+                </label>
+                <div className="text-xs">
+                  <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>PNL currency</span>
+                  <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                    {(["native", "usd", "idr"] as const).map((currency) => (
+                      <button
+                        key={currency}
+                        className="flex-1 py-2 text-[11px] font-semibold cursor-pointer border-0"
+                        style={{
+                          background: (cardStyle.currency || "native") === currency ? "var(--text)" : "var(--panel-2)",
+                          color: (cardStyle.currency || "native") === currency ? "var(--bg)" : "var(--text-dim)",
+                        }}
+                        onClick={() => setCardStyle({ ...cardStyle, currency })}
+                      >
+                        {currency === "native" ? symbol : currency.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               <div className="flex flex-wrap items-center gap-2 mb-3">
-                <span className="text-xs" style={{ color: "var(--text-dim)" }}>Accent:</span>
-                {["#f5b13d", "#2fbf71", "#5b8def", "#ef5b5b", "#b57bff"].map((c) => (
+                <span className="text-xs" style={{ color: "var(--text-dim)" }}>Accent</span>
+                {["#b99762", "#638c7b", "#687b9c", "#966f76", "#7b718f"].map((c) => (
                   <button
                     key={c}
+                    aria-label={`Accent ${c}`}
                     className="w-6 h-6 rounded-full border-2 cursor-pointer"
-                    style={{ background: c, borderColor: cardStyle.accent === c ? "#fff" : "transparent" }}
+                    style={{ background: c, borderColor: cardStyle.accent === c ? "var(--text)" : "transparent" }}
                     onClick={() => setCardStyle({ ...cardStyle, accent: c })}
                   />
                 ))}
-                <select
-                  className="input !rounded-lg px-2 py-1 text-xs ml-auto"
-                  value={cardStyle.theme}
-                  onChange={(e) => setCardStyle({ ...cardStyle, theme: e.target.value as CardStyle["theme"] })}
-                >
-                  <option value="holo">Holo ✨</option>
-                  <option value="gold">Gold 🏆</option>
-                  <option value="gradient">Gradient</option>
-                  <option value="dark">Dark</option>
-                  <option value="light">Light</option>
-                </select>
+                <label className="ml-auto inline-flex items-center gap-2 text-xs cursor-pointer select-none" style={{ color: "var(--text-dim)" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!cardStyle.hideWallet}
+                    onChange={(e) => setCardStyle({ ...cardStyle, hideWallet: e.target.checked })}
+                  />
+                  Hide wallet address
+                </label>
               </div>
 
               {/* custom art background */}

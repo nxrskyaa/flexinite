@@ -2,20 +2,33 @@
 
 import { fmtWei, fmtInt, fmtPct, fmtDate } from "@/lib/format";
 
+export type CardCurrency = "native" | "usd" | "idr";
+
 export interface CardStyle {
   accent: string;
   theme: "dark" | "light" | "gradient" | "holo" | "gold";
+  currency?: CardCurrency;
+  hideWallet?: boolean;
   bgMode?: "none" | "image" | "video";
-  bgUrl?: string; // data URL or http URL for the art-window background
+  bgUrl?: string;
 }
 
-export const defaultCardStyle: CardStyle = { accent: "#f5b13d", theme: "holo", bgMode: "none" };
+export const defaultCardStyle: CardStyle = {
+  accent: "#b99762",
+  theme: "dark",
+  currency: "native",
+  hideWallet: false,
+  bgMode: "none",
+};
 
 export interface CardData {
   wallet: string;
+  projectName?: string;
   chainLabel: string;
   chainLogo: string;
   symbol: string;
+  nativeUsd?: number | null;
+  nativeIdr?: number | null;
   spentWei: string;
   receivedWei: string;
   gasWei: string;
@@ -32,300 +45,191 @@ export interface CardData {
   toBlock: number;
 }
 
-function Mark({ color }: { color: string }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="8" fill={color} />
-      <path d="M17.8 4L7.5 18.2h6.2L12 28l10.5-14.2h-6.2z" fill="#141003" />
-    </svg>
-  );
-}
+type Palette = {
+  bg: string;
+  surface: string;
+  surfaceStrong: string;
+  text: string;
+  muted: string;
+  faint: string;
+  border: string;
+  line: string;
+};
 
-// ---- theme palettes ----
-function palette(theme: CardStyle["theme"], accent: string) {
+function palette(theme: CardStyle["theme"], accent: string): Palette {
   switch (theme) {
     case "light":
       return {
-        innerBg: "#faf6ec",
-        text: "#241f14",
-        dim: "#7a7260",
-        border: "rgba(60,45,10,.18)",
-        artFallback: "linear-gradient(160deg,#efe6c8,#e2d3a0 60%,#d8c484)",
-        frame: "linear-gradient(140deg,#e8d27f,#c9a945 30%,#f4e7ae 55%,#b98f2e 80%,#e8d27f)",
-      };
-    case "gold":
-      return {
-        innerBg: "linear-gradient(160deg,#221a08,#120d04 70%)",
-        text: "#f6ead0",
-        dim: "#b09a6a",
-        border: "rgba(246,234,208,.16)",
-        artFallback: `radial-gradient(120% 120% at 30% 20%, ${accent}44, transparent 60%), linear-gradient(160deg,#2a2008,#0e0a03)`,
-        frame: "linear-gradient(140deg,#ffe9a8,#c9962e 28%,#fff3cf 52%,#9a6f1c 78%,#ffe9a8)",
-      };
-    case "holo":
-      return {
-        innerBg: "linear-gradient(165deg,#101426,#0a0d1c 60%,#131a33)",
-        text: "#eef1ff",
-        dim: "#8f97c9",
-        border: "rgba(238,241,255,.14)",
-        artFallback: `radial-gradient(130% 130% at 25% 15%, ${accent}55, transparent 55%), radial-gradient(120% 120% at 80% 85%, #5b8def44, transparent 60%), linear-gradient(160deg,#1a2044,#070a18)`,
-        frame: "linear-gradient(140deg,#a8b6ff,#e6c7ff 22%,#8fe3ff 48%,#ffb3e6 74%,#fff3b0)",
+        bg: "#f4f1eb",
+        surface: "rgba(255,255,255,.58)",
+        surfaceStrong: "#ebe6dc",
+        text: "#242321",
+        muted: "#716e68",
+        faint: "#99948b",
+        border: "rgba(36,35,33,.12)",
+        line: "rgba(36,35,33,.08)",
       };
     case "gradient":
       return {
-        innerBg: "linear-gradient(155deg,#12100a,#1a1509 55%,#0a0908)",
-        text: "#f4f2ee",
-        dim: "#94918a",
-        border: "rgba(255,255,255,.1)",
-        artFallback: `radial-gradient(120% 120% at 30% 20%, ${accent}33, transparent 60%), linear-gradient(160deg,#201a0e,#0a0908)`,
-        frame: `linear-gradient(140deg,${accent},#6b5520 35%,${accent} 60%,#3d3010 85%,${accent})`,
+        bg: `linear-gradient(150deg,#151412 0%,#211d18 62%,${accent}26 100%)`,
+        surface: "rgba(255,255,255,.045)",
+        surfaceStrong: "rgba(255,255,255,.075)",
+        text: "#f5f2ec",
+        muted: "#aaa49a",
+        faint: "#77736c",
+        border: "rgba(255,255,255,.11)",
+        line: "rgba(255,255,255,.07)",
       };
-    default: // dark
+    case "holo":
       return {
-        innerBg: "#0b0a08",
-        text: "#f4f2ee",
-        dim: "#94918a",
-        border: "rgba(255,255,255,.1)",
-        artFallback: "linear-gradient(160deg,#1c1710,#0b0a08)",
-        frame: "linear-gradient(140deg,#57503f,#2e2a1e 40%,#6b6350 65%,#211d14)",
+        bg: "linear-gradient(150deg,#11151b 0%,#17202a 58%,#1d252b 100%)",
+        surface: "rgba(216,229,238,.055)",
+        surfaceStrong: "rgba(216,229,238,.085)",
+        text: "#eef1f2",
+        muted: "#9aa5aa",
+        faint: "#66737a",
+        border: "rgba(200,219,228,.12)",
+        line: "rgba(200,219,228,.07)",
+      };
+    case "gold":
+      return {
+        bg: "linear-gradient(150deg,#1a1713 0%,#211b15 58%,#171411 100%)",
+        surface: "rgba(199,168,119,.055)",
+        surfaceStrong: "rgba(199,168,119,.09)",
+        text: "#f2ede5",
+        muted: "#aaa096",
+        faint: "#756d65",
+        border: "rgba(199,168,119,.14)",
+        line: "rgba(199,168,119,.08)",
+      };
+    default:
+      return {
+        bg: "#171717",
+        surface: "rgba(255,255,255,.045)",
+        surfaceStrong: "rgba(255,255,255,.075)",
+        text: "#f5f5f3",
+        muted: "#a3a3a0",
+        faint: "#696967",
+        border: "rgba(255,255,255,.105)",
+        line: "rgba(255,255,255,.065)",
       };
   }
+}
+
+function shortWallet(wallet: string) {
+  if (!wallet.startsWith("0x") || wallet.length < 16) return wallet;
+  return `${wallet.slice(0, 8)}…${wallet.slice(-6)}`;
+}
+
+function money(wei: string | bigint, data: CardData, currency: CardCurrency) {
+  const amount = Number(BigInt(wei || "0")) / 1e18;
+  if (currency === "usd" && data.nativeUsd) {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount * data.nativeUsd);
+  }
+  if (currency === "idr" && data.nativeIdr) {
+    return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(amount * data.nativeIdr);
+  }
+  return `${fmtWei(BigInt(wei || "0"))} ${data.symbol}`;
+}
+
+function BrandMark({ color }: { color: string }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="8" fill={color} />
+      <path d="M17.8 4L7.5 18.2h6.2L12 28l10.5-14.2h-6.2z" fill="#141310" />
+    </svg>
+  );
 }
 
 export default function PnLCard({ data, style }: { data: CardData; style: CardStyle }) {
   const pnl = BigInt(data.realizedPnlWei || "0");
   const isUp = pnl > 0n;
   const isDown = pnl < 0n;
-  const pnlColor = isUp ? "#2fbf71" : isDown ? "#ef5350" : "#94918a";
-  const accent = style.accent;
-  const p = palette(style.theme, accent);
+  const accent = style.accent || defaultCardStyle.accent;
+  const p = palette(style.theme || "dark", accent);
+  const currency = style.currency || "native";
+  const displayCurrency = currency === "usd" && !data.nativeUsd ? "native" : currency === "idr" && !data.nativeIdr ? "native" : currency;
+  const pnlColor = isUp ? "#62aa83" : isDown ? "#c96f6f" : p.muted;
   const hasCustomBg = style.bgMode !== "none" && !!style.bgUrl;
-
-  const rows: Array<{ icon: string; label: string; value: string }> = [
-    { icon: "🔥", label: "Spent", value: `${fmtWei(data.spentWei)} ${data.symbol}` },
-    { icon: "💰", label: "Received", value: `${fmtWei(data.receivedWei)} ${data.symbol}` },
-    { icon: "🎯", label: "Mints / Buys / Sales", value: `${fmtInt(data.mints)} / ${fmtInt(data.buys)} / ${fmtInt(data.sales)}` },
-    { icon: "💎", label: "Held", value: fmtInt(data.held) },
-  ];
-  if (data.gasWei && data.gasWei !== "0") {
-    rows.push({ icon: "⛽", label: "Gas", value: `${fmtWei(data.gasWei)} ${data.symbol}` });
-  }
-
-  const flavor = [
-    data.firstTs ? `first hunt ${fmtDate(data.firstTs)}` : null,
-    data.lastTs ? `last hunt ${fmtDate(data.lastTs)}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const activity = data.mints + data.buys + data.sales;
+  const projectName = data.projectName?.trim() || "NFT Portfolio";
+  const period = [data.firstTs ? fmtDate(data.firstTs) : null, data.lastTs ? fmtDate(data.lastTs) : null].filter(Boolean).join(" — ");
 
   return (
     <div
       style={{
         width: "100%",
         maxWidth: 420,
-        aspectRatio: "63 / 88", // Pokémon card ratio
-        borderRadius: 20,
-        padding: 12,
-        background: p.frame,
-        boxShadow: "0 14px 44px rgba(0,0,0,.55)",
-        fontFamily: "Inter, system-ui, sans-serif",
+        aspectRatio: "4 / 5",
+        borderRadius: 24,
+        background: p.bg,
+        color: p.text,
+        border: `1px solid ${p.border}`,
+        boxShadow: "0 24px 70px rgba(0,0,0,.38)",
+        fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         margin: "0 auto",
+        padding: 24,
+        boxSizing: "border-box",
         position: "relative",
         overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      {/* holo shine sweep */}
-      {style.theme === "holo" && (
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            zIndex: 5,
-            background:
-              "linear-gradient(115deg, transparent 20%, rgba(255,255,255,.16) 36%, rgba(168,255,223,.14) 44%, rgba(255,182,255,.13) 52%, transparent 70%)",
-            mixBlendMode: "screen",
-          }}
-        />
+      <div aria-hidden style={{ position: "absolute", width: 260, height: 260, borderRadius: "50%", right: -130, top: -145, background: accent, opacity: style.theme === "light" ? 0.09 : 0.1, filter: "blur(12px)" }} />
+      {hasCustomBg && style.bgMode === "image" && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={style.bgUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.17 }} />
       )}
+      {hasCustomBg && style.bgMode === "video" && <video src={style.bgUrl} autoPlay muted loop playsInline style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.17 }} />}
+      {hasCustomBg && <div aria-hidden style={{ position: "absolute", inset: 0, background: style.theme === "light" ? "rgba(244,241,235,.82)" : "rgba(16,16,16,.76)" }} />}
 
-      {/* inner card */}
-      <div
-        style={{
-          height: "100%",
-          borderRadius: 12,
-          background: p.innerBg,
-          color: p.text,
-          border: `2px solid ${style.theme === "light" ? "rgba(60,45,10,.25)" : "rgba(0,0,0,.5)"}`,
-          display: "flex",
-          flexDirection: "column",
-          padding: "10px 12px",
-          boxSizing: "border-box",
-          position: "relative",
-        }}
-      >
-        {/* header: name + HP-style badge */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-            <Mark color={accent} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 800, fontSize: 14, letterSpacing: 0.6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                FLEXINITE · PNL
-              </div>
-              <div style={{ fontSize: 10, fontFamily: "ui-monospace, monospace", color: p.dim, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {data.wallet}
-              </div>
-            </div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-              flexShrink: 0,
-              background: "#ffd23f",
-              color: "#3d2c00",
-              fontWeight: 900,
-              fontSize: 12,
-              padding: "3px 10px",
-              borderRadius: 999,
-              border: "2px solid #b8860b",
-              boxShadow: "inset 0 -2px 0 rgba(0,0,0,.18)",
-            }}
-          >
-            <span style={{ fontSize: 9, letterSpacing: 1, fontWeight: 800 }}>PNL</span>
-            {fmtPct(data.realizedPnlPct)}
-          </div>
+      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <BrandMark color={accent} />
+          <span style={{ fontSize: 11, fontWeight: 650, letterSpacing: 2.1 }}>FLEXINITE</span>
         </div>
+        <span style={{ border: `1px solid ${p.border}`, background: p.surface, color: p.muted, borderRadius: 999, padding: "5px 10px", fontSize: 10, fontWeight: 600 }}>
+          {data.chainLabel}
+        </span>
+      </div>
 
-        {/* art window */}
-        <div
-          data-art
-          style={{
-            marginTop: 8,
-            height: "38%",
-            borderRadius: 10,
-            border: `3px solid ${style.theme === "light" ? "rgba(60,45,10,.3)" : "rgba(255,255,255,.14)"}`,
-            background: p.artFallback,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            position: "relative",
-            overflow: "hidden",
-            flexShrink: 0,
-          }}
-        >
-          {hasCustomBg && style.bgMode === "image" && (
-            <img
-              src={style.bgUrl}
-              alt=""
-              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          )}
-          {hasCustomBg && style.bgMode === "video" && (
-            <video
-              src={style.bgUrl}
-              autoPlay
-              muted
-              loop
-              playsInline
-              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          )}
-          {/* scrim + big PnL */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background: "linear-gradient(180deg, rgba(0,0,0,.05) 40%, rgba(0,0,0,.55))",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "flex-end",
-              padding: "10px 12px",
-            }}
-          >
-            <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "rgba(255,255,255,.75)", fontWeight: 700 }}>
-              {data.pnlLabel || "Realized PnL"}
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-              <span
-                style={{
-                  fontSize: 26,
-                  fontWeight: 900,
-                  color: "#fff",
-                  textShadow: `0 2px 14px ${pnlColor}cc`,
-                  lineHeight: 1.05,
-                }}
-              >
-                {isUp ? "+" : ""}
-                {fmtWei(pnl)} {data.symbol}
-              </span>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  color: "#fff",
-                  background: pnlColor,
-                  padding: "2px 8px",
-                  borderRadius: 999,
-                }}
-              >
-                {fmtPct(data.realizedPnlPct)}
-              </span>
-            </div>
-          </div>
-        </div>
+      <div style={{ position: "relative", zIndex: 1, marginTop: 30 }}>
+        <div style={{ color: p.faint, fontSize: 10, fontWeight: 650, letterSpacing: 1.6, textTransform: "uppercase" }}>Collection performance</div>
+        <div style={{ marginTop: 6, fontSize: 24, lineHeight: 1.12, fontWeight: 600, letterSpacing: -0.55, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{projectName}</div>
+        {!style.hideWallet && <div style={{ marginTop: 7, color: p.muted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11 }}>{shortWallet(data.wallet)}</div>}
+      </div>
 
-        {/* stat rows */}
-        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 5, flex: 1, minHeight: 0 }}>
-          {rows.map((r) => (
-            <div
-              key={r.label}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "4px 8px",
-                borderRadius: 8,
-                background: style.theme === "light" ? "rgba(60,45,10,.06)" : "rgba(255,255,255,.05)",
-                border: `1px solid ${p.border}`,
-                fontSize: 12,
-              }}
-            >
-              <span style={{ fontSize: 13, width: 18, textAlign: "center" }}>{r.icon}</span>
-              <span style={{ color: p.dim, flex: 1 }}>{r.label}</span>
-              <span style={{ fontWeight: 700 }}>{r.value}</span>
-            </div>
-          ))}
+      <div style={{ position: "relative", zIndex: 1, marginTop: 24, padding: "20px 20px 18px", borderRadius: 18, background: p.surfaceStrong, border: `1px solid ${p.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <span style={{ color: p.muted, fontSize: 10, fontWeight: 650, letterSpacing: 1.45, textTransform: "uppercase" }}>{data.pnlLabel || "Realized PnL"}</span>
+          <span style={{ color: pnlColor, fontSize: 12, fontWeight: 650 }}>{fmtPct(data.realizedPnlPct)}</span>
         </div>
+        <div style={{ color: pnlColor, fontSize: displayCurrency === "idr" ? 29 : 34, lineHeight: 1.02, fontWeight: 600, letterSpacing: -1.2, whiteSpace: "nowrap" }}>
+          {isUp ? "+" : ""}{money(pnl, data, displayCurrency)}
+        </div>
+        <div style={{ height: 3, borderRadius: 99, background: p.line, marginTop: 17, overflow: "hidden" }}>
+          <div style={{ width: `${Math.min(100, Math.max(8, Math.abs(data.realizedPnlPct || 0) / 3))}%`, height: "100%", borderRadius: 99, background: pnlColor }} />
+        </div>
+      </div>
 
-        {/* footer: flavor text + set info */}
-        <div style={{ marginTop: 8, flexShrink: 0 }}>
-          {flavor && (
-            <div style={{ fontSize: 9.5, fontStyle: "italic", color: p.dim, textAlign: "center", marginBottom: 5 }}>
-              {flavor}
-            </div>
-          )}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              borderTop: `1px solid ${p.border}`,
-              paddingTop: 5,
-              fontSize: 8.5,
-              color: p.dim,
-            }}
-          >
-            <span>
-              {data.chainLogo} {data.chainLabel}
-              {data.toBlock > 0 ? ` · blocks ${data.fromBlock.toLocaleString()} → ${data.toBlock.toLocaleString()}` : ""}
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 800, letterSpacing: 1.2 }}>
-              ★ HOLO FLEX
-            </span>
+      <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+        {[
+          ["Invested", money(data.spentWei, data, displayCurrency)],
+          ["Received", money(data.receivedWei, data, displayCurrency)],
+          ["NFTs held", fmtInt(data.held)],
+          ["Activity", `${fmtInt(activity)} tx`],
+        ].map(([label, value]) => (
+          <div key={label} style={{ padding: "12px 13px", background: p.surface, border: `1px solid ${p.line}`, borderRadius: 13 }}>
+            <div style={{ color: p.faint, fontSize: 9.5, fontWeight: 600, letterSpacing: .75, textTransform: "uppercase" }}>{label}</div>
+            <div style={{ marginTop: 5, fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
           </div>
-        </div>
+        ))}
+      </div>
+
+      <div style={{ position: "relative", zIndex: 1, marginTop: "auto", borderTop: `1px solid ${p.line}`, paddingTop: 13, display: "flex", alignItems: "center", justifyContent: "space-between", color: p.faint, fontSize: 9.5 }}>
+        <span>{period || `${fmtInt(data.mints)} mint · ${fmtInt(data.buys)} buy · ${fmtInt(data.sales)} sale`}</span>
+        <span style={{ fontWeight: 650, letterSpacing: .7 }}>{displayCurrency === "native" ? data.symbol : displayCurrency.toUpperCase()}</span>
       </div>
     </div>
   );
