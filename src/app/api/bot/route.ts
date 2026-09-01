@@ -4,7 +4,6 @@ import { ZERO_ADDR, resolveRpc, probeToken } from "@/lib/rpc";
 import { resolveRange } from "@/lib/engine";
 import {
   getBlockscout,
-  bsTokenTransfers,
   bsTokenMeta,
   bsTxDetails,
   bsAddressTransfers,
@@ -13,16 +12,16 @@ import {
   bsCoinPrice,
 } from "@/lib/blockscout";
 import { rateLimited, clientIp, badRequest, tooMany } from "../_limit";
+import { getOpenSeaFloorByContract } from "@/lib/opensea";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
-const MAX_MOVES = 20000;
 const MAX_WALLETS = 50;
-
-interface Move { from: string; to: string; qty: bigint; tokenId: string; txHash: string }
+const BOT_CACHE_TTL_MS = 30_000;
+const botCache = new Map<string, { at: number; data: unknown }>();
 
 export async function GET(req: NextRequest) {
   const ip = clientIp(req);
@@ -46,12 +45,21 @@ export async function GET(req: NextRequest) {
   const chainId = parseInt(chainIdRaw || "1", 10);
   if (isNaN(chainId)) return badRequest("Invalid chainId");
 
+  const cacheKey = `${chainId}:${contractRaw.toLowerCase()}:${wallets.slice().sort().join(",")}:${fromBlock || ""}:${windowDays || "30"}`;
+  const cached = botCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < BOT_CACHE_TTL_MS) {
+    return Response.json(cached.data, { headers: { "X-Flexinite-Cache": "HIT" } });
+  }
+
   try {
     const chain = await getChain(chainId);
     const contract = contractRaw.toLowerCase();
     let rpc: string | null = null;
     try { rpc = await resolveRpc(chain); } catch { /* none */ }
-    const bs = await getBlockscout(chain);
+    // Robinhood Blockscout is intermittently reachable but its paginated NFT
+    // feeds stall in serverless runs. Use wallet-indexed RPC logs there; they
+    // are both faster and authoritative for this calculation.
+    const bs = chainId === 4663 ? null : await getBlockscout(chain);
 
     // meta
     let name: string | null = null, symbol: string | null = null, standard = "Unknown";
@@ -106,40 +114,72 @@ export async function GET(req: NextRequest) {
       });
       truncated = wallets.some((w) => (walletMoves.get(w) || []).length >= 500);
     } else if (rpc) {
-      const { ERC721_TRANSFER_TOPIC, topicToAddress } = await import("@/lib/rpc");
-      const { fetchRange, pool: poolFn } = await import("@/lib/engine");
-      const segs: Array<[number, number]> = [];
-      for (let s = fromB; s <= toB; s += 30000) segs.push([s, Math.min(s + 29999, toB)]);
-      const pages = await poolFn(segs, 10, ([s, e]) =>
-        fetchRange(rpc!, { address: contract, topics: [[ERC721_TRANSFER_TOPIC]] }, s, e)
-      );
-      const moves: Array<{ from: string; to: string; qty: bigint; txHash: string; block: number }> = [];
-      for (const logs of pages) {
-        for (const l of logs) {
-          if (!l.topics || l.topics.length < 3) continue;
-          moves.push({
-            from: topicToAddress(l.topics[1]),
-            to: topicToAddress(l.topics[2]),
-            qty: 1n,
-            txHash: l.transactionHash,
-            block: typeof l.blockNumber === "string" ? parseInt(l.blockNumber, 16) || 0 : Number(l.blockNumber ?? 0),
-          });
-          if (moves.length > MAX_MOVES) break;
+      const { ERC721_TRANSFER_TOPIC, topicToAddress, padAddress, rpcCall } = await import("@/lib/rpc");
+      const { pool: poolFn } = await import("@/lib/engine");
+      // Holdings and their cost basis require lifetime collection history.
+      // Query the contract+wallet indexed topics in one shot. Do NOT feed a
+      // full fast-chain lifetime range into adaptive splitting: RPCs that cap
+      // ranges can recursively create millions of subqueries and exhaust RAM.
+      fromB = fromBlock ? Math.max(0, parseInt(fromBlock, 10) || 0) : 0;
+      const candidates = [
+        ...(chainId === 4663 ? ["https://rpc.mainnet.chain.robinhood.com"] : []),
+        rpc,
+        ...chain.rpcUrls,
+      ].filter((v, i, a): v is string => Boolean(v) && a.indexOf(v) === i);
+
+      let winner: string | null = null;
+      let latestBlock = 0;
+      const logsByWallet = new Map<string, { incoming: Awaited<ReturnType<typeof rpcCall>>; outgoing: Awaited<ReturnType<typeof rpcCall>> }>();
+      const rpcDeadline = Date.now() + 30000;
+      for (let round = 0; round < 2 && !winner; round++) {
+        for (const candidate of candidates) {
+          if (Date.now() >= rpcDeadline) break;
+          try {
+            const latestHex = await rpcCall(candidate, "eth_blockNumber", [], 3000);
+            const latest = parseInt(latestHex, 16);
+            const result = new Map<string, { incoming: Awaited<ReturnType<typeof rpcCall>>; outgoing: Awaited<ReturnType<typeof rpcCall>> }>();
+            await poolFn(wallets, 5, async (w) => {
+              const wt = padAddress(w);
+              const [incoming, outgoing] = await Promise.all([
+                rpcCall(candidate, "eth_getLogs", [{ address: contract, fromBlock: `0x${fromB.toString(16)}`, toBlock: latestHex, topics: [[ERC721_TRANSFER_TOPIC], null, [wt]] }], 6000),
+                rpcCall(candidate, "eth_getLogs", [{ address: contract, fromBlock: `0x${fromB.toString(16)}`, toBlock: latestHex, topics: [[ERC721_TRANSFER_TOPIC], [wt]] }], 6000),
+              ]);
+              if (!Array.isArray(incoming) || !Array.isArray(outgoing)) throw new Error("Invalid eth_getLogs response");
+              result.set(w, { incoming, outgoing });
+            });
+            for (const [w, logs] of result) logsByWallet.set(w, logs);
+            winner = candidate;
+            latestBlock = latest;
+            break;
+          } catch {
+            // Try the next public RPC as a whole-range provider.
+          }
         }
-        if (moves.length > MAX_MOVES) break;
+        if (!winner && round === 0) await new Promise((resolve) => setTimeout(resolve, 250));
       }
-      const wlSet = new Set(wallets);
+      if (!winner) throw new Error("No RPC accepted wallet-indexed lifetime logs");
+      rpc = winner;
+      toB = latestBlock;
+
       for (const w of wallets) {
+        const logs = logsByWallet.get(w) || { incoming: [], outgoing: [] };
+        const seen = new Set<string>();
         const mv: WMove[] = [];
-        for (const m of moves) {
-          if (m.from === w) mv.push({ dir: "out", qty: m.qty, txHash: m.txHash, ts: m.block, mint: false });
-          else if (m.to === w) mv.push({ dir: "in", qty: m.qty, txHash: m.txHash, ts: m.block, mint: m.from === ZERO_ADDR });
+        for (const l of [...logs.incoming, ...logs.outgoing]) {
+          if (!l.topics || l.topics.length < 4) continue;
+          const logKey = `${l.transactionHash}:${l.logIndex}`;
+          if (seen.has(logKey)) continue;
+          seen.add(logKey);
+          const from = topicToAddress(l.topics[1]);
+          const to = topicToAddress(l.topics[2]);
+          const block = parseInt(l.blockNumber, 16) || 0;
+          if (from === w && to !== w) mv.push({ dir: "out", qty: 1n, txHash: l.transactionHash, ts: block, mint: false });
+          else if (to === w && from !== w) mv.push({ dir: "in", qty: 1n, txHash: l.transactionHash, ts: block, mint: from === ZERO_ADDR });
         }
         mv.sort((a, b) => a.ts - b.ts);
         walletMoves.set(w, mv);
       }
-      void wlSet;
-      truncated = moves.length >= MAX_MOVES;
+      truncated = false;
     } else {
       return Response.json({ error: "No data source available for this chain" }, { status: 500 });
     }
@@ -165,15 +205,26 @@ export async function GET(req: NextRequest) {
     } else if (rpc) {
       const { rpcCall } = await import("@/lib/rpc");
       const hashes = [...txHashSet].slice(0, 400);
+      const txRpcs = [
+        rpc,
+        ...(chainId === 4663 ? ["https://rpc.mainnet.chain.robinhood.com"] : []),
+        ...chain.rpcUrls,
+      ].filter((v, i, a): v is string => Boolean(v) && a.indexOf(v) === i);
       for (let i = 0; i < hashes.length; i += 10) {
         const batch = hashes.slice(i, i + 10);
         await Promise.all(batch.map(async (h) => {
-          try {
-            const tx = await rpcCall(rpc!, "eth_getTransactionByHash", [h]);
-            if (tx?.value) txValue.get(h)!.value = BigInt(tx.value);
-            if (tx?.from) txValue.get(h)!.from = String(tx.from).toLowerCase();
-            if (tx?.to) txValue.get(h)!.to = String(tx.to).toLowerCase();
-          } catch { /* ignore */ }
+          // Public RPCs occasionally return/timeout one transaction request
+          // after a successful log scan. Fail over before treating cost as 0.
+          for (const txRpc of txRpcs) {
+            try {
+              const tx = await rpcCall(txRpc, "eth_getTransactionByHash", [h], 8000);
+              if (!tx) continue;
+              if (tx.value) txValue.get(h)!.value = BigInt(tx.value);
+              if (tx.from) txValue.get(h)!.from = String(tx.from).toLowerCase();
+              if (tx.to) txValue.get(h)!.to = String(tx.to).toLowerCase();
+              break;
+            } catch { /* try next rpc */ }
+          }
         }));
       }
     }
@@ -208,6 +259,8 @@ export async function GET(req: NextRequest) {
         incomeWei.set(h, inflow);
       });
     }
+
+    const floor = await getOpenSeaFloorByContract(chainId, contract);
 
     // per-wallet FIFO
     interface WStat {
@@ -255,7 +308,10 @@ export async function GET(req: NextRequest) {
           while (rem > 0n && s.lots.length) {
             const lot = s.lots[0];
             const take = lot.qty < rem ? lot.qty : rem;
-            costOut += lot.qty > 0n ? (lot.cost / lot.qty) * take : 0n;
+            const unitCost = lot.qty > 0n ? lot.cost / lot.qty : 0n;
+            const removedCost = unitCost * take;
+            costOut += removedCost;
+            lot.cost -= removedCost;
             lot.qty -= take; rem -= take;
             if (lot.qty === 0n) s.lots.shift();
           }
@@ -267,6 +323,9 @@ export async function GET(req: NextRequest) {
     const rows = wallets.map((w) => {
       const s = stats.get(w)!;
       s.held = s.lots.reduce((a, l) => a + l.qty, 0n);
+      const openCost = s.lots.reduce((a, l) => a + l.cost, 0n);
+      const currentValue = floor ? s.held * floor.floorPriceWei : 0n;
+      const unrealized = floor ? currentValue - openCost : 0n;
       return {
         wallet: s.wallet,
         minted: s.minted.toString(),
@@ -277,6 +336,10 @@ export async function GET(req: NextRequest) {
         receivedWei: s.received.toString(),
         realizedPnlWei: s.realized.toString(),
         realizedPnlPct: s.spent > 0n ? Number((s.realized * 10000n) / s.spent) / 100 : null,
+        openCostWei: openCost.toString(),
+        currentValueWei: floor ? currentValue.toString() : null,
+        unrealizedPnlWei: floor ? unrealized.toString() : null,
+        unrealizedPnlPct: floor && openCost > 0n ? Number((unrealized * 10000n) / openCost) / 100 : null,
       };
     });
 
@@ -284,8 +347,11 @@ export async function GET(req: NextRequest) {
     const totalSpent = sum((r) => BigInt(r.spentWei));
     const totalReceived = sum((r) => BigInt(r.receivedWei));
     const totalRealized = sum((r) => BigInt(r.realizedPnlWei));
+    const totalOpenCost = sum((r) => BigInt(r.openCostWei));
+    const totalCurrentValue = rows.reduce((a, r) => a + BigInt(r.currentValueWei || "0"), 0n);
+    const totalUnrealized = floor ? totalCurrentValue - totalOpenCost : 0n;
 
-    return Response.json({
+    const payload = {
       chainId,
       contract,
       name,
@@ -295,6 +361,12 @@ export async function GET(req: NextRequest) {
       toBlock: toB,
       truncated,
       source: bs ? "blockscout" : "rpc",
+      floor: floor ? {
+        slug: floor.slug,
+        priceWei: floor.floorPriceWei.toString(),
+        price: floor.floorPrice,
+        symbol: floor.symbol,
+      } : null,
       wallets: rows,
       totals: {
         walletCount: rows.length,
@@ -306,8 +378,14 @@ export async function GET(req: NextRequest) {
         receivedWei: totalReceived.toString(),
         realizedPnlWei: totalRealized.toString(),
         realizedPnlPct: totalSpent > 0n ? Number((totalRealized * 10000n) / totalSpent) / 100 : null,
+        openCostWei: totalOpenCost.toString(),
+        currentValueWei: floor ? totalCurrentValue.toString() : null,
+        unrealizedPnlWei: floor ? totalUnrealized.toString() : null,
+        unrealizedPnlPct: floor && totalOpenCost > 0n ? Number((totalUnrealized * 10000n) / totalOpenCost) / 100 : null,
       },
-    });
+    };
+    botCache.set(cacheKey, { at: Date.now(), data: payload });
+    return Response.json(payload, { headers: { "X-Flexinite-Cache": "MISS" } });
   } catch (e) {
     return Response.json(
       { error: "Bot PnL scan failed", detail: String((e as Error).message || e) },

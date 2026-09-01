@@ -122,6 +122,10 @@ interface BotRow {
   receivedWei: string;
   realizedPnlWei: string;
   realizedPnlPct: number | null;
+  openCostWei: string;
+  currentValueWei: string | null;
+  unrealizedPnlWei: string | null;
+  unrealizedPnlPct: number | null;
 }
 
 interface BotResult {
@@ -129,6 +133,7 @@ interface BotResult {
   name: string | null;
   symbol: string | null;
   standard: string;
+  floor: { slug: string; priceWei: string; price: number; symbol: string } | null;
   totals: {
     walletCount: number;
     minted: string;
@@ -139,6 +144,10 @@ interface BotResult {
     receivedWei: string;
     realizedPnlWei: string;
     realizedPnlPct: number | null;
+    openCostWei: string;
+    currentValueWei: string | null;
+    unrealizedPnlWei: string | null;
+    unrealizedPnlPct: number | null;
   };
   wallets: BotRow[];
 }
@@ -498,8 +507,9 @@ export default function Home() {
         spentWei: t.spentWei,
         receivedWei: t.receivedWei,
         gasWei: "0",
-        realizedPnlWei: t.realizedPnlWei,
-        realizedPnlPct: t.realizedPnlPct,
+        realizedPnlWei: t.unrealizedPnlWei ?? t.realizedPnlWei,
+        realizedPnlPct: t.unrealizedPnlPct ?? t.realizedPnlPct,
+        pnlLabel: t.unrealizedPnlWei !== null ? "Unrealized PnL" : "Realized PnL",
         mints: Number(t.minted),
         buys: Number(t.bought),
         sales: Number(t.sold),
@@ -1101,14 +1111,15 @@ function BotView({ data, symbol, onCard }: { data: BotResult; symbol: string; on
       </div>
       <div className="text-xs mb-4" style={{ color: "var(--text-dim)" }}>
         {t.walletCount} wallets · {data.standard}
+        {data.floor ? ` · floor ${data.floor.price} ${data.floor.symbol}` : " · floor unavailable"}
       </div>
 
       <StatCards
         items={[
-          { label: "Total realized PnL", value: `${fmtWei(t.realizedPnlWei)} ${symbol} (${fmtPct(t.realizedPnlPct)})`, cls: pnlClass(t.realizedPnlWei) },
-          { label: "Total spent", value: `${fmtWei(t.spentWei)} ${symbol}` },
-          { label: "Total received", value: `${fmtWei(t.receivedWei)} ${symbol}` },
-          { label: "Held by all wallets", value: fmtInt(t.held) },
+          { label: "Unrealized PnL", value: t.unrealizedPnlWei !== null ? `${fmtWei(t.unrealizedPnlWei)} ${symbol} (${fmtPct(t.unrealizedPnlPct)})` : "Floor unavailable", cls: t.unrealizedPnlWei !== null ? pnlClass(t.unrealizedPnlWei) : "" },
+          { label: "Current floor value", value: t.currentValueWei !== null ? `${fmtWei(t.currentValueWei)} ${symbol}` : "—" },
+          { label: "Open cost basis", value: `${fmtWei(t.openCostWei)} ${symbol}` },
+          { label: "Realized PnL", value: `${fmtWei(t.realizedPnlWei)} ${symbol} (${fmtPct(t.realizedPnlPct)})`, cls: pnlClass(t.realizedPnlWei) },
         ]}
       />
 
@@ -1123,6 +1134,7 @@ function BotView({ data, symbol, onCard }: { data: BotResult; symbol: string; on
               <th>Held</th>
               <th>Spent</th>
               <th>Received</th>
+              <th>Unrealized PnL</th>
               <th>Realized PnL</th>
             </tr>
           </thead>
@@ -1141,6 +1153,9 @@ function BotView({ data, symbol, onCard }: { data: BotResult; symbol: string; on
                     <td>{fmtInt(r.held)}</td>
                     <td>{fmtWei(r.spentWei)} {symbol}</td>
                     <td>{fmtWei(r.receivedWei)} {symbol}</td>
+                    <td className={r.unrealizedPnlWei !== null ? pnlClass(r.unrealizedPnlWei) : ""}>
+                      {r.unrealizedPnlWei !== null ? `${fmtWei(r.unrealizedPnlWei)} (${fmtPct(r.unrealizedPnlPct)})` : "—"}
+                    </td>
                     <td className={pnlClass(p)}>{fmtWei(p)} ({fmtPct(r.realizedPnlPct)})</td>
                   </tr>
                 );

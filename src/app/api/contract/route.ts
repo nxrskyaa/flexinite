@@ -110,12 +110,12 @@ export async function GET(req: NextRequest) {
       );
       for (const logs of logsPages) {
         for (const l of logs) {
-          if (!l.topics || l.topics.length < 3) continue;
+          if (!l.topics || l.topics.length < 4) continue;
           moves.push({
             from: topicToAddress(l.topics[1]),
             to: topicToAddress(l.topics[2]),
             qty: 1n,
-            tokenId: BigInt(l.topics[2] || "0x0").toString(),
+            tokenId: BigInt(l.topics[3] || "0x0").toString(),
             txHash: l.transactionHash,
           });
           if (moves.length > MAX_MOVES) break;

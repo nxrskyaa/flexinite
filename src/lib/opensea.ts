@@ -18,6 +18,13 @@ export interface ResolvedLink {
   contracts?: { address: string; chainId: number; chainName: string }[];
 }
 
+export interface OpenSeaFloor {
+  slug: string;
+  floorPriceWei: bigint;
+  floorPrice: number;
+  symbol: string;
+}
+
 const CHAIN_MAP: Record<string, { chainId: number; label: string }> = {
   ethereum: { chainId: 1, label: "Ethereum" },
   base: { chainId: 8453, label: "Base" },
@@ -42,6 +49,68 @@ const CHAIN_MAP: Record<string, { chainId: number; label: string }> = {
 };
 
 const ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
+
+const CHAIN_ID_TO_OS: Record<number, string> = {
+  1: "ethereum",
+  8453: "base",
+  137: "polygon",
+  42161: "arbitrum",
+  10: "optimism",
+  56: "bnb",
+  2741: "abstract",
+  33139: "apechain",
+  4663: "robinhood",
+  43114: "avalanche",
+  7777777: "zora",
+  81457: "blast",
+  59144: "linea",
+  534352: "scroll",
+  1329: "sei",
+};
+
+function decimalToWei(value: number): bigint {
+  if (!Number.isFinite(value) || value < 0) return 0n;
+  // OpenSea floor precision is at most 9 decimal places. Limiting the input
+  // first avoids carrying IEEE-754 noise (e.g. ...000002) into wei.
+  const [whole, fraction = ""] = value.toFixed(9).split(".");
+  return BigInt(whole) * 10n ** 18n + BigInt(fraction.padEnd(18, "0").slice(0, 18));
+}
+
+/** Resolve an NFT contract to its OpenSea collection and current floor. */
+export async function getOpenSeaFloorByContract(
+  chainId: number,
+  contract: string
+): Promise<OpenSeaFloor | null> {
+  const chain = CHAIN_ID_TO_OS[chainId];
+  if (!chain || !ADDR_RE.test(contract)) return null;
+  try {
+    const metaRes = await fetch(
+      `https://api.opensea.io/api/v2/chain/${chain}/contract/${contract.toLowerCase()}`,
+      { signal: AbortSignal.timeout(12000), headers: { accept: "application/json" } }
+    );
+    if (!metaRes.ok) return null;
+    const meta = (await metaRes.json()) as { collection?: string };
+    if (!meta.collection) return null;
+    const statsRes = await fetch(
+      `https://api.opensea.io/api/v2/collections/${encodeURIComponent(meta.collection)}/stats`,
+      { signal: AbortSignal.timeout(12000), headers: { accept: "application/json" } }
+    );
+    if (!statsRes.ok) return null;
+    const stats = (await statsRes.json()) as {
+      total?: { floor_price?: number; floor_price_symbol?: string };
+    };
+    const floor = Number(stats.total?.floor_price);
+    if (!Number.isFinite(floor) || floor <= 0) return null;
+    return {
+      slug: meta.collection,
+      floorPriceWei: decimalToWei(floor),
+      floorPrice: floor,
+      symbol: stats.total?.floor_price_symbol || "ETH",
+    };
+  } catch {
+    return null;
+  }
+}
 
 export function looksLikeOpenSeaUrl(text: string): boolean {
   return /opensea\.io/i.test(text);

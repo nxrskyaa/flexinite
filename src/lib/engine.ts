@@ -240,7 +240,7 @@ export async function fetchWalletEvents(
         events.push({
           contract: log.address.toLowerCase(),
           standard: "721",
-          tokenId: BigInt(log.topics[2] ? log.topics[2] : "0x0").toString(),
+          tokenId: BigInt(log.topics[3] ? log.topics[3] : "0x0").toString(),
           value: 1n,
           from: topicToAddress(log.topics[1]),
           to: topicToAddress(log.topics[2]),

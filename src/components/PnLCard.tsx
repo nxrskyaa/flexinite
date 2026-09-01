@@ -21,6 +21,7 @@ export interface CardData {
   gasWei: string;
   realizedPnlWei: string;
   realizedPnlPct: number | null;
+  pnlLabel?: string;
   mints: number;
   buys: number;
   sales: number;
@@ -244,7 +245,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
             }}
           >
             <div style={{ fontSize: 9, letterSpacing: 2, textTransform: "uppercase", color: "rgba(255,255,255,.75)", fontWeight: 700 }}>
-              Realized PnL
+              {data.pnlLabel || "Realized PnL"}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
               <span
