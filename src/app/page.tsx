@@ -175,6 +175,8 @@ type Result =
 
 const ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
 const SOL_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const BOT_RESULT_CACHE_PREFIX = "flexiniteBotResult:";
+const BOT_RESULT_CACHE_MS = 10 * 60 * 1000;
 
 // ---------- helpers ----------
 
@@ -242,6 +244,7 @@ export default function Home() {
   const [contractInput, setContractInput] = useState("");
   const [timeWindow, setTimeWindow] = useState("30");
   const [loading, setLoading] = useState(false);
+  const [botProgress, setBotProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [savedWallets, setSavedWallets] = useState<string[]>([]);
@@ -447,10 +450,20 @@ export default function Home() {
       if (wallets.length === 0) { setError("Enter one or more wallet addresses for Bot PNL"); setLoading(false); return; }
       if (wallets.length > 50) { setError("Max 50 wallets per Bot PNL scan"); setLoading(false); return; }
       if (!chain) { setError("Pick a network first"); setLoading(false); return; }
+      const cacheKey = `${BOT_RESULT_CACHE_PREFIX}${chain.chainId}:${contract.toLowerCase()}:${wallets.slice().sort().join(",")}:${timeWindow}`;
+      try {
+        const saved = sessionStorage.getItem(cacheKey);
+        if (saved) {
+          const cached = JSON.parse(saved) as { at: number; data: BotResult };
+          if (Date.now() - cached.at < BOT_RESULT_CACHE_MS) setResult({ kind: "bot", data: cached.data });
+        }
+      } catch { /* cache is optional */ }
       // Robinhood RPC lifetime transfer queries reject larger parallel wallet
       // sets. Six wallets per request is the verified stable limit; aggregate
       // all chunks in the browser so a long bot list still completes.
       const batches: BotResult[] = [];
+      const totalBatches = Math.ceil(wallets.length / 6);
+      setBotProgress({ done: 0, total: totalBatches });
       for (let i = 0; i < wallets.length; i += 6) {
         const batch = wallets.slice(i, i + 6).filter((w) => ADDR_RE.test(w));
         let data: BotResult | null = null;
@@ -467,13 +480,16 @@ export default function Home() {
         }
         if (!data) throw lastError;
         batches.push(data);
+        setBotProgress({ done: batches.length, total: totalBatches });
       }
       const data = mergeBotBatches(batches);
+      try { sessionStorage.setItem(cacheKey, JSON.stringify({ at: Date.now(), data })); } catch { /* cache is optional */ }
       addWallets(wallets);
       setResult({ kind: "bot", data });
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      setBotProgress(null);
       setLoading(false);
     }
   };
@@ -794,7 +810,7 @@ export default function Home() {
                 onClick={() => runScan(mode)}
               >
                 {loading || resolving ? <span className="spin" /> : null}
-                {loading ? "Scanning…" : resolving ? "Resolving…" : mode === "wallet" ? "Scan wallet" : mode === "collection" ? "Scan collection" : "Run Bot PNL"}
+                {resolving ? "Resolving…" : mode === "bot" && botProgress ? `Reading bots ${botProgress.done}/${botProgress.total}` : loading ? "Scanning…" : mode === "wallet" ? "Scan wallet" : mode === "collection" ? "Scan collection" : "Run Bot PNL"}
               </button>
               {chain && (
                 <span className="text-xs hidden md:inline" style={{ color: "var(--text-dim)" }}>
