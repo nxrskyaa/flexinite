@@ -189,10 +189,36 @@ function isOpensea(text: string): boolean {
   return /opensea\.io/i.test(text);
 }
 
+function mergeBotBatches(parts: BotResult[]): BotResult {
+  if (parts.length === 0) throw new Error("No Bot PNL results");
+  const first = parts[0];
+  const wallets = parts.flatMap((part) => part.wallets);
+  const sum = (key: keyof BotRow) => wallets.reduce((total, row) => total + BigInt(String(row[key] ?? "0")), 0n).toString();
+  const spent = BigInt(sum("spentWei"));
+  const realized = BigInt(sum("realizedPnlWei"));
+  const openCost = BigInt(sum("openCostWei"));
+  const hasFloor = first.floor !== null;
+  const current = hasFloor ? BigInt(sum("currentValueWei")) : null;
+  const unrealized = current === null ? null : current - openCost;
+  return {
+    ...first,
+    wallets,
+    totals: {
+      walletCount: wallets.length,
+      minted: sum("minted"), bought: sum("bought"), sold: sum("sold"), held: sum("held"),
+      spentWei: spent.toString(), receivedWei: sum("receivedWei"), realizedPnlWei: realized.toString(),
+      realizedPnlPct: spent > 0n ? Number((realized * 10000n) / spent) / 100 : null,
+      openCostWei: openCost.toString(), currentValueWei: current?.toString() ?? null,
+      unrealizedPnlWei: unrealized?.toString() ?? null,
+      unrealizedPnlPct: unrealized !== null && openCost > 0n ? Number((unrealized * 10000n) / openCost) / 100 : null,
+    },
+  };
+}
+
 async function jfetch(url: string) {
   const r = await fetch(url);
   const j = await r.json();
-  if (!r.ok) throw new Error(j.error || j.detail || "Request failed");
+  if (!r.ok) throw new Error(j.detail || j.error || "Request failed");
   return j;
 }
 
@@ -419,10 +445,30 @@ export default function Home() {
       }
       if (!ADDR_RE.test(contract)) { setError("Enter a collection contract address or OpenSea link for Bot PNL"); setLoading(false); return; }
       if (wallets.length === 0) { setError("Enter one or more wallet addresses for Bot PNL"); setLoading(false); return; }
+      if (wallets.length > 50) { setError("Max 50 wallets per Bot PNL scan"); setLoading(false); return; }
       if (!chain) { setError("Pick a network first"); setLoading(false); return; }
-      const data = await jfetch(
-        `/api/bot?contract=${contract}&wallets=${wallets.filter((w) => ADDR_RE.test(w)).join(",")}&chainId=${chain.chainId}&window=${timeWindow}`
-      );
+      // Robinhood RPC lifetime transfer queries reject larger parallel wallet
+      // sets. Six wallets per request is the verified stable limit; aggregate
+      // all chunks in the browser so a long bot list still completes.
+      const batches: BotResult[] = [];
+      for (let i = 0; i < wallets.length; i += 6) {
+        const batch = wallets.slice(i, i + 6).filter((w) => ADDR_RE.test(w));
+        let data: BotResult | null = null;
+        let lastError: unknown;
+        for (let attempt = 0; attempt < 2 && !data; attempt++) {
+          try {
+            data = await jfetch(
+              `/api/bot?contract=${contract}&wallets=${batch.join(",")}&chainId=${chain.chainId}&window=${timeWindow}`
+            ) as BotResult;
+          } catch (err) {
+            lastError = err;
+            if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, 600));
+          }
+        }
+        if (!data) throw lastError;
+        batches.push(data);
+      }
+      const data = mergeBotBatches(batches);
       addWallets(wallets);
       setResult({ kind: "bot", data });
     } catch (e) {
