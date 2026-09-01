@@ -226,7 +226,11 @@ export default function Home() {
     if (typeof window !== "undefined") {
       try {
         const s = localStorage.getItem("flexiniteCardStyle");
-        if (s) return { ...defaultCardStyle, ...JSON.parse(s) };
+        if (s) {
+          const saved = JSON.parse(s) as CardStyle;
+          const legacyDefault = saved.theme === "holo" && saved.accent === "#f5b13d" && saved.currency === undefined;
+          return legacyDefault ? defaultCardStyle : { ...defaultCardStyle, ...saved };
+        }
       } catch { /* ignore */ }
     }
     return defaultCardStyle;
