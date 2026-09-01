@@ -893,21 +893,26 @@ export default function Home() {
                 </label>
                 <div className="text-xs">
                   <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>PNL currency</span>
-                  <div className="flex rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
-                    {(["native", "usd", "idr"] as const).map((currency) => (
+                  <div className="grid grid-cols-3 gap-1 rounded-lg overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                    {([
+                      ["native", symbol], ["usd", "USD"], ["idr", "IDR"],
+                      ["escekek", "Es cekek"], ["cilok", "Cilok"], ["telurgulung", "Telur"],
+                    ] as const).map(([currency, label]) => (
                       <button
                         key={currency}
-                        className="flex-1 py-2 text-[11px] font-semibold cursor-pointer border-0"
+                        className="py-2 text-[10px] font-semibold cursor-pointer border-0"
                         style={{
                           background: (cardStyle.currency || "native") === currency ? "var(--text)" : "var(--panel-2)",
                           color: (cardStyle.currency || "native") === currency ? "var(--bg)" : "var(--text-dim)",
                         }}
                         onClick={() => setCardStyle({ ...cardStyle, currency })}
+                        title={currency === "escekek" ? "Rp4.000 / gelas" : currency === "cilok" ? "Rp1.500 / porsi" : currency === "telurgulung" ? "Rp2.000 / tusuk" : undefined}
                       >
-                        {currency === "native" ? symbol : currency.toUpperCase()}
+                        {label}
                       </button>
                     ))}
                   </div>
+                  <div className="mt-1 text-[10px]" style={{ color: "var(--text-faint)" }}>Mode lucu: Es cekek Rp4.000 · Cilok Rp1.500 · Telur gulung Rp2.000</div>
                 </div>
               </div>
 

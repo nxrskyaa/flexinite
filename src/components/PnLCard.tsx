@@ -2,7 +2,13 @@
 
 import { fmtWei, fmtInt, fmtPct, fmtDate } from "@/lib/format";
 
-export type CardCurrency = "native" | "usd" | "idr";
+export type CardCurrency = "native" | "usd" | "idr" | "escekek" | "cilok" | "telurgulung";
+
+const snackCurrencies: Record<"escekek" | "cilok" | "telurgulung", { price: number; short: string; unit: string }> = {
+  escekek: { price: 4000, short: "Es cekek", unit: "gelas es cekek" },
+  cilok: { price: 1500, short: "Cilok", unit: "porsi cilok bojot aa" },
+  telurgulung: { price: 2000, short: "Telur", unit: "tusuk telur gulung" },
+};
 
 export interface CardStyle {
   accent: string;
@@ -133,6 +139,10 @@ function shortWallet(wallet: string) {
 
 function money(wei: string | bigint, data: CardData, currency: CardCurrency) {
   const amount = Number(BigInt(wei || "0")) / 1e18;
+  if (currency in snackCurrencies && data.nativeIdr) {
+    const snack = snackCurrencies[currency as keyof typeof snackCurrencies];
+    return `${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(amount * data.nativeIdr / snack.price)} ${snack.unit}`;
+  }
   if (currency === "usd" && data.nativeUsd) {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount * data.nativeUsd);
   }
@@ -158,7 +168,9 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const accent = style.accent || defaultCardStyle.accent;
   const p = palette(style.theme || "dark", accent);
   const currency = style.currency || "native";
-  const displayCurrency = currency === "usd" && !data.nativeUsd ? "native" : currency === "idr" && !data.nativeIdr ? "native" : currency;
+  const needsIdr = currency === "idr" || currency in snackCurrencies;
+  const displayCurrency = currency === "usd" && !data.nativeUsd ? "native" : needsIdr && !data.nativeIdr ? "native" : currency;
+  const currencyLabel = displayCurrency in snackCurrencies ? snackCurrencies[displayCurrency as keyof typeof snackCurrencies].short : displayCurrency === "native" ? data.symbol : displayCurrency.toUpperCase();
   const pnlColor = isUp ? "#62aa83" : isDown ? "#c96f6f" : p.muted;
   const hasCustomBg = style.bgMode !== "none" && !!style.bgUrl;
   const activity = data.mints + data.buys + data.sales;
@@ -228,9 +240,10 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
           <span style={{ color: p.muted, fontSize: 10, fontWeight: 650, letterSpacing: 1.45, textTransform: "uppercase" }}>{data.pnlLabel || "Realized PnL"}</span>
           <span style={{ color: pnlColor, fontSize: 12, fontWeight: 650 }}>{fmtPct(data.realizedPnlPct)}</span>
         </div>
-        <div style={{ color: pnlColor, fontSize: displayCurrency === "idr" ? 29 : 34, lineHeight: 1.02, fontWeight: 600, letterSpacing: -1.2, whiteSpace: "nowrap" }}>
+        <div style={{ color: pnlColor, fontSize: displayCurrency in snackCurrencies ? 21 : displayCurrency === "idr" ? 29 : 34, lineHeight: 1.06, fontWeight: 600, letterSpacing: displayCurrency in snackCurrencies ? -.5 : -1.2, whiteSpace: displayCurrency in snackCurrencies ? "normal" : "nowrap" }}>
           {isUp ? "+" : ""}{money(pnl, data, displayCurrency)}
         </div>
+        {displayCurrency in snackCurrencies && <div style={{ marginTop: 7, color: p.faint, fontSize: 9.5, fontWeight: 600, letterSpacing: .55 }}>SIMULASI JAJAN · {currencyLabel}</div>}
         <div style={{ height: 3, borderRadius: 99, background: p.line, marginTop: 17, overflow: "hidden" }}>
           <div style={{ width: `${Math.min(100, Math.max(8, Math.abs(data.realizedPnlPct || 0) / 3))}%`, height: "100%", borderRadius: 99, background: pnlColor }} />
         </div>
@@ -252,7 +265,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
 
       <div style={{ position: "relative", zIndex: 1, marginTop: "auto", borderTop: `1px solid ${p.line}`, paddingTop: 13, display: "flex", alignItems: "center", justifyContent: "space-between", color: p.faint, fontSize: 9.5 }}>
         <span>{period || `${fmtInt(data.mints)} mint · ${fmtInt(data.buys)} buy · ${fmtInt(data.sales)} sale`}</span>
-        <span style={{ fontWeight: 650, letterSpacing: .7 }}>{displayCurrency === "native" ? data.symbol : displayCurrency.toUpperCase()}</span>
+        <span style={{ fontWeight: 650, letterSpacing: .7 }}>{currencyLabel}</span>
       </div>
       <div style={{ position: "relative", zIndex: 1, marginTop: 9, textAlign: "center", color: p.faint, fontSize: 9, letterSpacing: .8, fontWeight: 650 }}>FLEXINITE <span style={{ opacity: .65 }}>BY NXRLABS</span></div>
     </div>
