@@ -8,8 +8,8 @@ const snackCurrencies: Record<"escekek" | "cilok" | "telurgulung" | "nasirendang
   escekek: { price: 4000, short: "Es cekek", unit: "gelas es cekek" },
   cilok: { price: 1500, short: "Cilok", unit: "porsi cilok bojot aa" },
   telurgulung: { price: 2000, short: "Telur", unit: "tusuk telur gulung" },
-  nasirendang: { price: 16000, short: "Naspad rendang", unit: "bungkus nasi padang rendang" },
-  naskuli: { price: 10000, short: "Naspad kuli", unit: "bungkus naspad porsi kuli" },
+  nasirendang: { price: 16000, short: "Naspad rendang", unit: "bungkus naspad rendang" },
+  naskuli: { price: 10000, short: "Naspad kuli", unit: "bungkus naspad kuli" },
 };
 
 export interface CardStyle {
@@ -24,6 +24,7 @@ export interface CardStyle {
   bgY?: number;
   bgScale?: number;
   artOpacity?: number;
+  effect?: "none" | "aurora" | "sunset" | "ocean" | "candy";
   frame?: "clean" | "editorial" | "vault" | "signal" | "gallery" | "collector";
 }
 
@@ -38,6 +39,7 @@ export const defaultCardStyle: CardStyle = {
   bgY: 50,
   bgScale: 100,
   artOpacity: 46,
+  effect: "none",
   frame: "clean",
 };
 
@@ -175,6 +177,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const needsIdr = currency === "idr" || currency in snackCurrencies;
   const displayCurrency = currency === "usd" && !data.nativeUsd ? "native" : needsIdr && !data.nativeIdr ? "native" : currency;
   const currencyLabel = displayCurrency in snackCurrencies ? snackCurrencies[displayCurrency as keyof typeof snackCurrencies].short : displayCurrency === "native" ? data.symbol : displayCurrency.toUpperCase();
+  const statCurrency: CardCurrency = displayCurrency in snackCurrencies ? "idr" : displayCurrency;
   const pnlColor = isUp ? "#62aa83" : isDown ? "#c96f6f" : p.muted;
   const hasCustomBg = style.bgMode !== "none" && !!style.bgUrl;
   const activity = data.mints + data.buys + data.sales;
@@ -184,6 +187,8 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const bgScale = (style.bgScale ?? 100) / 100;
   const artOpacity = Math.min(85, Math.max(15, style.artOpacity ?? 46)) / 100;
   const artOverlay = style.theme === "light" ? `rgba(244,241,235,${Math.max(.18, .72 - artOpacity * .7)})` : `rgba(16,16,16,${Math.max(.18, .72 - artOpacity * .75)})`;
+  const effect = style.effect || "none";
+  const effectGradient = effect === "aurora" ? "radial-gradient(circle at 12% 88%, rgba(60,255,189,.34), transparent 42%), radial-gradient(circle at 92% 8%, rgba(111,111,255,.42), transparent 47%)" : effect === "sunset" ? "radial-gradient(circle at 6% 92%, rgba(255,79,111,.38), transparent 45%), radial-gradient(circle at 96% 4%, rgba(255,181,70,.42), transparent 48%)" : effect === "ocean" ? "radial-gradient(circle at 8% 86%, rgba(35,196,255,.36), transparent 45%), radial-gradient(circle at 92% 6%, rgba(97,71,255,.42), transparent 50%)" : effect === "candy" ? "radial-gradient(circle at 8% 88%, rgba(255,83,178,.35), transparent 43%), radial-gradient(circle at 94% 8%, rgba(110,198,255,.42), transparent 48%)" : "none";
   const username = style.username?.trim().replace(/^@+/, "");
   const frame = style.frame || "clean";
   const frameStyle = frame === "editorial"
@@ -226,6 +231,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       )}
       {hasCustomBg && style.bgMode === "video" && <video src={style.bgUrl} autoPlay muted loop playsInline style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: bgPosition, transform: `scale(${bgScale})`, transformOrigin: bgPosition, opacity: artOpacity }} />}
       {hasCustomBg && <div aria-hidden style={{ position: "absolute", inset: 0, background: artOverlay }} />}
+      {effect !== "none" && <div aria-hidden style={{ position: "absolute", inset: -30, background: effectGradient, filter: "blur(18px)", mixBlendMode: "screen", opacity: hasCustomBg ? .8 : 1, pointerEvents: "none" }} />}
       {frame === "collector" && <><div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(118deg, rgba(255,255,255,.23) 0%, transparent 28%, transparent 66%, rgba(255,255,255,.12) 100%)", mixBlendMode: "screen", pointerEvents: "none" }} /><div aria-hidden style={{ position: "absolute", width: 220, height: 220, borderRadius: "50%", right: -100, bottom: -105, background: accent, opacity: .24, filter: "blur(18px)" }} /></>}
       {frame === "signal" && <div aria-hidden style={{ position: "absolute", inset: 11, border: `1px solid ${accent}88`, borderRadius: 16, pointerEvents: "none" }} />}
       {frame === "vault" && <><div aria-hidden style={{ position: "absolute", top: 12, left: 12, width: 20, height: 20, borderTop: `2px solid ${accent}`, borderLeft: `2px solid ${accent}` }} /><div aria-hidden style={{ position: "absolute", right: 12, bottom: 12, width: 20, height: 20, borderRight: `2px solid ${accent}`, borderBottom: `2px solid ${accent}` }} /></>}
@@ -262,8 +268,8 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
 
       <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
         {[
-          ["Invested", money(data.spentWei, data, displayCurrency)],
-          ["Received", money(data.receivedWei, data, displayCurrency)],
+          ["Invested", money(data.spentWei, data, statCurrency)],
+          ["Received", money(data.receivedWei, data, statCurrency)],
           ["NFTs held", fmtInt(data.held)],
           ["Activity", `${fmtInt(activity)} tx`],
         ].map(([label, value]) => (

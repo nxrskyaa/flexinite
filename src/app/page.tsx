@@ -919,7 +919,7 @@ export default function Home() {
 
               <div className="flex flex-wrap items-center gap-2 mb-3">
                 <span className="text-xs" style={{ color: "var(--text-dim)" }}>Accent</span>
-                {["#b99762", "#638c7b", "#687b9c", "#966f76", "#7b718f"].map((c) => (
+                {["#b99762", "#638c7b", "#687b9c", "#966f76", "#7b718f", "#ff6b8a", "#7c6cff", "#22b8a8", "#ff9f43", "#3b9cff", "#c779ff"].map((c) => (
                   <button
                     key={c}
                     aria-label={`Accent ${c}`}
@@ -936,6 +936,17 @@ export default function Home() {
                   />
                   Hide wallet address
                 </label>
+              </div>
+
+              <div className="mb-3 text-xs">
+                <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Gradient / blur effect</span>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {([
+                    ["none", "Plain"], ["aurora", "Aurora"], ["sunset", "Sunset"], ["ocean", "Ocean"], ["candy", "Candy"],
+                  ] as const).map(([effect, label]) => (
+                    <button key={effect} className="rounded-lg px-1 py-2 text-[10px] font-semibold cursor-pointer" style={{ border: `1px solid ${(cardStyle.effect || "none") === effect ? cardStyle.accent : "var(--border)"}`, background: effect === "none" ? "transparent" : effect === "aurora" ? "linear-gradient(135deg,#32d7ad,#6f6fff)" : effect === "sunset" ? "linear-gradient(135deg,#ff4f6f,#ffb546)" : effect === "ocean" ? "linear-gradient(135deg,#23c4ff,#6147ff)" : "linear-gradient(135deg,#ff53b2,#6ec6ff)", color: effect === "none" ? "var(--text-dim)" : "#fff" }} onClick={() => setCardStyle({ ...cardStyle, effect })}>{label}</button>
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-3 mb-3">
