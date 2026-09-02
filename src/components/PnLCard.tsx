@@ -197,16 +197,16 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const username = style.username?.trim().replace(/^@+/, "");
   const frame = style.frame || "clean";
   const frameStyle = frame === "editorial"
-    ? { border: `2px solid ${accent}`, borderRadius: 18, boxShadow: `inset 0 0 0 4px ${p.bg}` }
+    ? { border: `1px solid ${p.border}`, borderRadius: 12, boxShadow: `inset 0 0 0 4px ${p.bg}` }
     : frame === "vault"
-      ? { border: `1px solid ${accent}`, borderRadius: 8, boxShadow: `inset 0 0 0 1px ${p.border}` }
+      ? { border: `1px solid ${p.border}`, borderRadius: 8, boxShadow: `inset 0 0 0 1px ${p.line}` }
       : frame === "gallery"
-        ? { border: `7px solid ${p.surfaceStrong}`, borderRadius: 15, boxShadow: `inset 0 0 0 1px ${accent}88` }
+        ? { border: `6px solid ${p.surfaceStrong}`, borderRadius: 12, boxShadow: `inset 0 0 0 1px ${p.border}` }
         : frame === "collector"
-          ? { border: `1px solid ${accent}`, borderRadius: 18, boxShadow: `inset 0 0 0 5px ${p.bg}, inset 0 0 0 6px ${accent}55` }
+          ? { border: `1px solid ${p.border}`, borderRadius: 14, boxShadow: `inset 0 0 0 5px ${p.bg}, inset 0 0 0 6px ${p.line}` }
         : frame === "signal"
-          ? { border: `1px solid ${p.border}`, borderRadius: 24, boxShadow: `inset 0 0 0 1px ${accent}44` }
-          : { border: `1px solid ${p.border}`, borderRadius: 24, boxShadow: "none" };
+          ? { border: `1px solid ${p.border}`, borderRadius: 16, boxShadow: `inset 0 0 0 1px ${p.line}` }
+          : { border: `1px solid ${p.border}`, borderRadius: 16, boxShadow: "none" };
 
   return (
     <div
@@ -240,9 +240,9 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       {hasCustomBg && <div aria-hidden style={{ position: "absolute", inset: 0, background: artOverlay }} />}
       {effect !== "none" && <div aria-hidden style={{ position: "absolute", inset: -30, background: effectGradient, filter: "blur(18px)", mixBlendMode: "screen", opacity: hasCustomBg ? .8 : 1, pointerEvents: "none" }} />}
       {finish !== "matte" && <div aria-hidden style={{ position: "absolute", inset: 0, background: finish === "holo3d" ? "linear-gradient(125deg, rgba(255,255,255,.27) 2%, transparent 22%, rgba(124,108,255,.18) 47%, transparent 61%, rgba(96,255,214,.16) 84%, rgba(255,255,255,.13) 100%)" : "linear-gradient(122deg, rgba(255,255,255,.24) 0%, transparent 25%, transparent 67%, rgba(255,255,255,.1) 100%)", mixBlendMode: "screen", pointerEvents: "none" }} />}
-      {frame === "collector" && <><div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(118deg, rgba(255,255,255,.23) 0%, transparent 28%, transparent 66%, rgba(255,255,255,.12) 100%)", mixBlendMode: "screen", pointerEvents: "none" }} /><div aria-hidden style={{ position: "absolute", width: 220, height: 220, borderRadius: "50%", right: -100, bottom: -105, background: accent, opacity: .24, filter: "blur(18px)" }} /></>}
-      {frame === "signal" && <div aria-hidden style={{ position: "absolute", inset: 11, border: `1px solid ${accent}88`, borderRadius: 16, pointerEvents: "none" }} />}
-      {frame === "vault" && <><div aria-hidden style={{ position: "absolute", top: 12, left: 12, width: 20, height: 20, borderTop: `2px solid ${accent}`, borderLeft: `2px solid ${accent}` }} /><div aria-hidden style={{ position: "absolute", right: 12, bottom: 12, width: 20, height: 20, borderRight: `2px solid ${accent}`, borderBottom: `2px solid ${accent}` }} /></>}
+      {frame === "collector" && <div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(118deg, rgba(255,255,255,.16) 0%, transparent 28%, transparent 66%, rgba(255,255,255,.07) 100%)", mixBlendMode: "screen", pointerEvents: "none" }} />}
+      {frame === "signal" && <div aria-hidden style={{ position: "absolute", inset: 11, border: `1px solid ${p.line}`, borderRadius: 10, pointerEvents: "none" }} />}
+      {frame === "vault" && <><div aria-hidden style={{ position: "absolute", top: 12, left: 12, width: 18, height: 18, borderTop: `1px solid ${p.border}`, borderLeft: `1px solid ${p.border}` }} /><div aria-hidden style={{ position: "absolute", right: 12, bottom: 12, width: 18, height: 18, borderRight: `1px solid ${p.border}`, borderBottom: `1px solid ${p.border}` }} /></>}
       <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <BrandMark color={accent} />
@@ -264,7 +264,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       </div>}
       </div>
 
-      <div style={{ position: "relative", zIndex: 1, marginTop: 24, padding: "19px 20px 17px", borderRadius: 10, background: `linear-gradient(135deg, ${p.surfaceStrong}, rgba(0,0,0,.02))`, borderTop: `1px solid ${accent}88`, borderBottom: `1px solid ${p.border}`, boxShadow: `inset 3px 0 0 ${accent}` }}>
+      <div style={{ position: "relative", zIndex: 1, marginTop: 24, padding: "19px 20px 17px", borderRadius: 10, background: `linear-gradient(135deg, ${p.surfaceStrong}, rgba(0,0,0,.02))`, borderTop: `1px solid ${p.border}`, borderBottom: `1px solid ${p.border}`, boxShadow: `inset 3px 0 0 ${accent}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <span style={{ color: p.muted, fontSize: 10, fontWeight: 650, letterSpacing: 1.45, textTransform: "uppercase" }}>{data.pnlLabel || "Realized PnL"}</span>
           <span style={{ color: pnlColor, fontSize: 12, fontWeight: 650 }}>{fmtPct(data.realizedPnlPct)}</span>
