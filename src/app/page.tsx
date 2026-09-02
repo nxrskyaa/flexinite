@@ -909,7 +909,7 @@ export default function Home() {
                     {([
                       ["native", symbol], ["usd", "USD"], ["idr", "IDR"],
                       ["escekek", "Es cekek"], ["cilok", "Cilok"], ["telurgulung", "Telur"],
-                      ["nasirendang", "Naspad Rndg"], ["naskuli", "Naspad Kuli"],
+                      ["nasirendang", "Naspad Rndg"], ["naskuli", "Naspad Kuli"], ["robux", "Robux"],
                     ] as const).map(([currency, label]) => (
                       <button
                         key={currency}
@@ -919,13 +919,14 @@ export default function Home() {
                           color: (cardStyle.currency || "native") === currency ? "var(--bg)" : "var(--text-dim)",
                         }}
                         onClick={() => setCardStyle({ ...cardStyle, currency })}
-                        title={currency === "escekek" ? "Rp4.000 / gelas" : currency === "cilok" ? "Rp1.500 / porsi" : currency === "telurgulung" ? "Rp2.000 / tusuk" : currency === "nasirendang" ? "Rp16.000 / bungkus" : currency === "naskuli" ? "Rp10.000 / bungkus" : undefined}
+                        title={currency === "robux" ? "Rp8 / Robux" : currency === "escekek" ? "Rp4.000 / gelas" : currency === "cilok" ? "Rp1.500 / porsi" : currency === "telurgulung" ? "Rp2.000 / tusuk" : currency === "nasirendang" ? "Rp16.000 / bungkus" : currency === "naskuli" ? "Rp10.000 / bungkus" : undefined}
                       >
                         {label}
                       </button>
                     ))}
                   </div>
-                  <div className="mt-1 text-[10px]" style={{ color: "var(--text-faint)" }}>Mode lucu: Es cekek Rp4rb · Cilok Rp1,5rb · Telur Rp2rb · Naspad rendang Rp16rb · Naspad kuli Rp10rb</div>
+                  <div className="mt-1 text-[10px]" style={{ color: "var(--text-faint)" }}>Mode PnL: Robux Rp8 · Es cekek Rp4rb · Cilok Rp1,5rb · Telur Rp2rb · Naspad rendang Rp16rb · Naspad kuli Rp10rb</div>
+                  <div className="mt-3 text-xs"><span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Invested equivalent</span><div className="grid grid-cols-3 gap-1.5">{([ ["native", symbol], ["idr", "IDR"], ["kerbau", "Kerbau"], ["sapi", "Sapi"], ["kambing", "Kambing"], ["indomie", "Indomie"] ] as const).map(([investedCurrency, label]) => <button key={investedCurrency} className="rounded-lg px-1 py-2 text-[10px] font-semibold cursor-pointer" style={{ border: `1px solid ${(cardStyle.investedCurrency || "native") === investedCurrency ? cardStyle.accent : "var(--border)"}`, color: "var(--text-dim)" }} onClick={() => setCardStyle({ ...cardStyle, investedCurrency })}>{label}</button>)}</div><span className="block mt-1 text-[10px]" style={{ color: "var(--text-faint)" }}>Patokan: kerbau Rp30jt · sapi Rp25jt · kambing Rp2,5jt · Indomie Rp3,5rb</span></div>
                 </div>
               </div>
 

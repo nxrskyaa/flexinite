@@ -2,20 +2,26 @@
 
 import { fmtWei, fmtInt, fmtPct, fmtDate } from "@/lib/format";
 
-export type CardCurrency = "native" | "usd" | "idr" | "escekek" | "cilok" | "telurgulung" | "nasirendang" | "naskuli";
+export type CardCurrency = "native" | "usd" | "idr" | "escekek" | "cilok" | "telurgulung" | "nasirendang" | "naskuli" | "robux" | "kerbau" | "sapi" | "kambing" | "indomie";
 
-const snackCurrencies: Record<"escekek" | "cilok" | "telurgulung" | "nasirendang" | "naskuli", { price: number; short: string; unit: string }> = {
+const snackCurrencies: Record<"escekek" | "cilok" | "telurgulung" | "nasirendang" | "naskuli" | "robux" | "kerbau" | "sapi" | "kambing" | "indomie", { price: number; short: string; unit: string }> = {
   escekek: { price: 4000, short: "Es cekek", unit: "gelas es cekek" },
   cilok: { price: 1500, short: "Cilok", unit: "porsi cilok bojot aa" },
   telurgulung: { price: 2000, short: "Telur", unit: "tusuk telur gulung" },
   nasirendang: { price: 16000, short: "Naspad rendang", unit: "bungkus naspad rendang" },
   naskuli: { price: 10000, short: "Naspad kuli", unit: "bungkus naspad kuli" },
+  robux: { price: 8, short: "Robux", unit: "Robux" },
+  kerbau: { price: 30000000, short: "Kerbau", unit: "ekor kerbau" },
+  sapi: { price: 25000000, short: "Sapi", unit: "ekor sapi" },
+  kambing: { price: 2500000, short: "Kambing", unit: "ekor kambing" },
+  indomie: { price: 3500, short: "Indomie", unit: "bungkus Indomie" },
 };
 
 export interface CardStyle {
   accent: string;
   theme: "dark" | "light" | "gradient" | "holo" | "gold";
   currency?: CardCurrency;
+  investedCurrency?: "native" | "idr" | "kerbau" | "sapi" | "kambing" | "indomie";
   hideWallet?: boolean;
   username?: string;
   bgMode?: "none" | "image" | "video";
@@ -37,6 +43,7 @@ export const defaultCardStyle: CardStyle = {
   accent: "#b99762",
   theme: "dark",
   currency: "native",
+  investedCurrency: "native",
   hideWallet: false,
   username: "",
   bgMode: "none",
@@ -188,6 +195,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const displayCurrency = currency === "usd" && !data.nativeUsd ? "native" : needsIdr && !data.nativeIdr ? "native" : currency;
   const currencyLabel = displayCurrency in snackCurrencies ? snackCurrencies[displayCurrency as keyof typeof snackCurrencies].short : displayCurrency === "native" ? data.symbol : displayCurrency.toUpperCase();
   const statCurrency: CardCurrency = displayCurrency in snackCurrencies ? "idr" : displayCurrency;
+  const investedCurrency: CardCurrency = style.investedCurrency || statCurrency;
   const tone = style.pnlTone || "neutral";
   const toneColor = tone === "emerald" ? "#7fbf9a" : tone === "amber" ? "#dfb770" : tone === "ice" ? "#9bcde0" : tone === "rose" ? "#d78392" : p.text;
   const pnlColor = tone === "neutral" && isDown ? "#ca7e87" : toneColor;
@@ -290,7 +298,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
 
       <div style={{ position: "relative", zIndex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
         {[
-          ["Invested", money(data.spentWei, data, statCurrency)],
+          ["Invested", money(data.spentWei, data, investedCurrency)],
           ["Received", money(data.receivedWei, data, statCurrency)],
           ["NFTs held", fmtInt(data.held)],
           ["Activity", `${fmtInt(activity)} tx`],
