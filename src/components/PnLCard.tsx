@@ -2,14 +2,15 @@
 
 import { fmtWei, fmtInt, fmtPct, fmtDate } from "@/lib/format";
 
-export type CardCurrency = "native" | "usd" | "idr" | "escekek" | "cilok" | "telurgulung" | "nasirendang" | "naskuli" | "robux" | "kerbau" | "sapi" | "kambing" | "indomie";
+export type CardCurrency = "native" | "usd" | "idr" | "escekek" | "cilok" | "telurgulung" | "nasirendang" | "naskuli" | "mbg" | "robux" | "kerbau" | "sapi" | "kambing" | "indomie";
 
-const snackCurrencies: Record<"escekek" | "cilok" | "telurgulung" | "nasirendang" | "naskuli" | "robux" | "kerbau" | "sapi" | "kambing" | "indomie", { price: number; short: string; unit: string }> = {
+const snackCurrencies: Record<"escekek" | "cilok" | "telurgulung" | "nasirendang" | "naskuli" | "mbg" | "robux" | "kerbau" | "sapi" | "kambing" | "indomie", { price: number; short: string; unit: string }> = {
   escekek: { price: 4000, short: "Es cekek", unit: "gelas es cekek" },
   cilok: { price: 1500, short: "Cilok", unit: "porsi cilok bojot aa" },
   telurgulung: { price: 2000, short: "Telur", unit: "tusuk telur gulung" },
   nasirendang: { price: 16000, short: "Naspad rendang", unit: "bungkus naspad rendang" },
   naskuli: { price: 10000, short: "Naspad kuli", unit: "bungkus naspad kuli" },
+  mbg: { price: 10000, short: "Porsi MBG", unit: "porsi MBG" },
   robux: { price: 8, short: "Robux", unit: "Robux" },
   kerbau: { price: 30000000, short: "Kerbau", unit: "ekor kerbau" },
   sapi: { price: 25000000, short: "Sapi", unit: "ekor sapi" },
