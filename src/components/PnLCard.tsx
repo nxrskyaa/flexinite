@@ -2,12 +2,14 @@
 
 import { fmtWei, fmtInt, fmtPct, fmtDate } from "@/lib/format";
 
-export type CardCurrency = "native" | "usd" | "idr" | "escekek" | "cilok" | "telurgulung";
+export type CardCurrency = "native" | "usd" | "idr" | "escekek" | "cilok" | "telurgulung" | "nasirendang" | "naskuli";
 
-const snackCurrencies: Record<"escekek" | "cilok" | "telurgulung", { price: number; short: string; unit: string }> = {
+const snackCurrencies: Record<"escekek" | "cilok" | "telurgulung" | "nasirendang" | "naskuli", { price: number; short: string; unit: string }> = {
   escekek: { price: 4000, short: "Es cekek", unit: "gelas es cekek" },
   cilok: { price: 1500, short: "Cilok", unit: "porsi cilok bojot aa" },
   telurgulung: { price: 2000, short: "Telur", unit: "tusuk telur gulung" },
+  nasirendang: { price: 16000, short: "Naspad rendang", unit: "bungkus nasi padang rendang" },
+  naskuli: { price: 10000, short: "Naspad kuli", unit: "bungkus naspad porsi kuli" },
 };
 
 export interface CardStyle {
@@ -21,7 +23,8 @@ export interface CardStyle {
   bgX?: number;
   bgY?: number;
   bgScale?: number;
-  frame?: "clean" | "editorial" | "vault" | "signal";
+  artOpacity?: number;
+  frame?: "clean" | "editorial" | "vault" | "signal" | "gallery" | "collector";
 }
 
 export const defaultCardStyle: CardStyle = {
@@ -34,6 +37,7 @@ export const defaultCardStyle: CardStyle = {
   bgX: 50,
   bgY: 50,
   bgScale: 100,
+  artOpacity: 46,
   frame: "clean",
 };
 
@@ -178,12 +182,18 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const period = [data.firstTs ? fmtDate(data.firstTs) : null, data.lastTs ? fmtDate(data.lastTs) : null].filter(Boolean).join(" — ");
   const bgPosition = `${style.bgX ?? 50}% ${style.bgY ?? 50}%`;
   const bgScale = (style.bgScale ?? 100) / 100;
+  const artOpacity = Math.min(85, Math.max(15, style.artOpacity ?? 46)) / 100;
+  const artOverlay = style.theme === "light" ? `rgba(244,241,235,${Math.max(.18, .72 - artOpacity * .7)})` : `rgba(16,16,16,${Math.max(.18, .72 - artOpacity * .75)})`;
   const username = style.username?.trim().replace(/^@+/, "");
   const frame = style.frame || "clean";
   const frameStyle = frame === "editorial"
     ? { border: `2px solid ${accent}`, borderRadius: 18, boxShadow: `inset 0 0 0 5px ${p.bg}, 0 24px 70px rgba(0,0,0,.38)` }
     : frame === "vault"
       ? { border: `1px solid ${accent}`, borderRadius: 8, boxShadow: `inset 0 0 0 1px ${p.border}, 0 24px 70px rgba(0,0,0,.38)` }
+      : frame === "gallery"
+        ? { border: `7px solid ${p.surfaceStrong}`, borderRadius: 15, boxShadow: `inset 0 0 0 1px ${accent}88, 0 24px 70px rgba(0,0,0,.42)` }
+        : frame === "collector"
+          ? { border: `2px solid ${accent}`, borderRadius: 22, boxShadow: `0 0 0 5px ${accent}30, 0 0 42px ${accent}88, inset 0 0 0 1px rgba(255,255,255,.30)` }
       : frame === "signal"
         ? { border: `1px solid ${p.border}`, borderRadius: 24, boxShadow: `inset 0 0 0 1px ${accent}44, 0 24px 70px rgba(0,0,0,.38)` }
         : { border: `1px solid ${p.border}`, borderRadius: 24, boxShadow: "0 24px 70px rgba(0,0,0,.38)" };
@@ -212,10 +222,11 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       <div aria-hidden style={{ position: "absolute", width: 260, height: 260, borderRadius: "50%", right: -130, top: -145, background: accent, opacity: style.theme === "light" ? 0.09 : 0.1, filter: "blur(12px)" }} />
       {hasCustomBg && style.bgMode === "image" && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={style.bgUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: bgPosition, transform: `scale(${bgScale})`, transformOrigin: bgPosition, opacity: 0.22 }} />
+        <img src={style.bgUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: bgPosition, transform: `scale(${bgScale})`, transformOrigin: bgPosition, opacity: artOpacity }} />
       )}
-      {hasCustomBg && style.bgMode === "video" && <video src={style.bgUrl} autoPlay muted loop playsInline style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: bgPosition, transform: `scale(${bgScale})`, transformOrigin: bgPosition, opacity: 0.22 }} />}
-      {hasCustomBg && <div aria-hidden style={{ position: "absolute", inset: 0, background: style.theme === "light" ? "rgba(244,241,235,.79)" : "rgba(16,16,16,.70)" }} />}
+      {hasCustomBg && style.bgMode === "video" && <video src={style.bgUrl} autoPlay muted loop playsInline style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: bgPosition, transform: `scale(${bgScale})`, transformOrigin: bgPosition, opacity: artOpacity }} />}
+      {hasCustomBg && <div aria-hidden style={{ position: "absolute", inset: 0, background: artOverlay }} />}
+      {frame === "collector" && <><div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(118deg, rgba(255,255,255,.23) 0%, transparent 28%, transparent 66%, rgba(255,255,255,.12) 100%)", mixBlendMode: "screen", pointerEvents: "none" }} /><div aria-hidden style={{ position: "absolute", width: 220, height: 220, borderRadius: "50%", right: -100, bottom: -105, background: accent, opacity: .24, filter: "blur(18px)" }} /></>}
       {frame === "signal" && <div aria-hidden style={{ position: "absolute", inset: 11, border: `1px solid ${accent}88`, borderRadius: 16, pointerEvents: "none" }} />}
       {frame === "vault" && <><div aria-hidden style={{ position: "absolute", top: 12, left: 12, width: 20, height: 20, borderTop: `2px solid ${accent}`, borderLeft: `2px solid ${accent}` }} /><div aria-hidden style={{ position: "absolute", right: 12, bottom: 12, width: 20, height: 20, borderRight: `2px solid ${accent}`, borderBottom: `2px solid ${accent}` }} /></>}
       <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>

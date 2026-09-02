@@ -897,6 +897,7 @@ export default function Home() {
                     {([
                       ["native", symbol], ["usd", "USD"], ["idr", "IDR"],
                       ["escekek", "Es cekek"], ["cilok", "Cilok"], ["telurgulung", "Telur"],
+                      ["nasirendang", "Naspad Rndg"], ["naskuli", "Naspad Kuli"],
                     ] as const).map(([currency, label]) => (
                       <button
                         key={currency}
@@ -906,13 +907,13 @@ export default function Home() {
                           color: (cardStyle.currency || "native") === currency ? "var(--bg)" : "var(--text-dim)",
                         }}
                         onClick={() => setCardStyle({ ...cardStyle, currency })}
-                        title={currency === "escekek" ? "Rp4.000 / gelas" : currency === "cilok" ? "Rp1.500 / porsi" : currency === "telurgulung" ? "Rp2.000 / tusuk" : undefined}
+                        title={currency === "escekek" ? "Rp4.000 / gelas" : currency === "cilok" ? "Rp1.500 / porsi" : currency === "telurgulung" ? "Rp2.000 / tusuk" : currency === "nasirendang" ? "Rp16.000 / bungkus" : currency === "naskuli" ? "Rp10.000 / bungkus" : undefined}
                       >
                         {label}
                       </button>
                     ))}
                   </div>
-                  <div className="mt-1 text-[10px]" style={{ color: "var(--text-faint)" }}>Mode lucu: Es cekek Rp4.000 · Cilok Rp1.500 · Telur gulung Rp2.000</div>
+                  <div className="mt-1 text-[10px]" style={{ color: "var(--text-faint)" }}>Mode lucu: Es cekek Rp4rb · Cilok Rp1,5rb · Telur Rp2rb · Naspad rendang Rp16rb · Naspad kuli Rp10rb</div>
                 </div>
               </div>
 
@@ -950,9 +951,10 @@ export default function Home() {
                 </label>
                 <div className="text-xs">
                   <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Frame</span>
-                  <div className="grid grid-cols-4 gap-1.5">
+                  <div className="grid grid-cols-3 gap-1.5">
                     {([
-                      ["clean", "Clean"], ["editorial", "Edge"], ["vault", "Vault"], ["signal", "Signal"],
+                      ["clean", "Clean"], ["editorial", "Edge"], ["vault", "Vault"],
+                      ["signal", "Signal"], ["gallery", "Gallery"], ["collector", "Collector ✦"],
                     ] as const).map(([frame, label]) => (
                       <button
                         key={frame}
@@ -976,18 +978,18 @@ export default function Home() {
                   <input ref={bgFileRef} type="file" accept="image/*,video/*" className="hidden" onChange={onBgUpload} />
                 </div>
                 {cardStyle.bgMode !== "none" && (
-                  <div className="grid grid-cols-3 gap-2 mt-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
                     {([
-                      ["Position X", "bgX", cardStyle.bgX ?? 50], ["Position Y", "bgY", cardStyle.bgY ?? 50], ["Zoom", "bgScale", cardStyle.bgScale ?? 100],
+                      ["Position X", "bgX", cardStyle.bgX ?? 50], ["Position Y", "bgY", cardStyle.bgY ?? 50], ["Zoom", "bgScale", cardStyle.bgScale ?? 100], ["Art visible", "artOpacity", cardStyle.artOpacity ?? 46],
                     ] as const).map(([label, key, value]) => (
                       <label key={key} className="text-[10px]" style={{ color: "var(--text-faint)" }}>
                         <span className="flex justify-between mb-1"><span>{label}</span><b style={{ color: "var(--text-dim)" }}>{value}%</b></span>
-                        <input className="w-full accent-current" style={{ accentColor: cardStyle.accent }} type="range" min={key === "bgScale" ? 100 : 0} max={key === "bgScale" ? 180 : 100} value={value} onChange={(e) => setCardStyle({ ...cardStyle, [key]: Number(e.target.value) })} />
+                        <input className="w-full accent-current" style={{ accentColor: cardStyle.accent }} type="range" min={key === "bgScale" ? 100 : key === "artOpacity" ? 15 : 0} max={key === "bgScale" ? 180 : key === "artOpacity" ? 85 : 100} value={value} onChange={(e) => setCardStyle({ ...cardStyle, [key]: Number(e.target.value) })} />
                       </label>
                     ))}
                   </div>
                 )}
-                <div className="text-[10px] mt-2" style={{ color: "var(--text-faint)" }}>Move the art, zoom it, then choose a frame — it stays on your card and in the PNG.</div>
+                <div className="text-[10px] mt-2" style={{ color: "var(--text-faint)" }}>Naikin Art visible biar gambar tidak ketutup gelap. Collector pakai glossy highlight + glow ala kartu koleksi.</div>
               </div>
 
               <div className="flex gap-2">
