@@ -270,6 +270,7 @@ export default function Home() {
   const cardRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const bgFileRef = useRef<HTMLInputElement>(null);
+  const profileFileRef = useRef<HTMLInputElement>(null);
 
   const symbol = chain?.symbol || "ETH";
 
@@ -566,6 +567,17 @@ export default function Home() {
       setCardStyle((s) => ({ ...s, bgMode: isVideo ? "video" : "image", bgUrl: url }));
       setError(null);
     };
+    reader.readAsDataURL(f);
+    e.target.value = "";
+  };
+
+  const onProfileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.type.startsWith("image/")) { setError("Profile must be an image"); return; }
+    if (f.size > 2 * 1024 * 1024) { setError("Profile image too large (max 2MB)"); return; }
+    const reader = new FileReader();
+    reader.onload = () => { setCardStyle((s) => ({ ...s, profileUrl: String(reader.result || "") })); setError(null); };
     reader.readAsDataURL(f);
     e.target.value = "";
   };
@@ -960,6 +972,18 @@ export default function Home() {
                     onChange={(e) => setCardStyle({ ...cardStyle, username: e.target.value })}
                   />
                 </label>
+                <div className="flex items-center gap-2 text-xs">
+                  {cardStyle.profileUrl ? <img src={cardStyle.profileUrl} alt="Profile preview" className="w-8 h-8 rounded-full object-cover" style={{ border: `1px solid ${cardStyle.accent}` }} /> : <div className="w-8 h-8 rounded-full" style={{ border: "1px dashed var(--border)" }} />}
+                  <button className="btn btn-ghost !py-1 text-xs" onClick={() => profileFileRef.current?.click()}>{cardStyle.profileUrl ? "Change profile" : "Add profile image"}</button>
+                  {cardStyle.profileUrl && <button className="btn btn-ghost !py-1 text-xs" style={{ color: "var(--neg)" }} onClick={() => setCardStyle({ ...cardStyle, profileUrl: undefined })}>Remove</button>}
+                  <input ref={profileFileRef} type="file" accept="image/*" className="hidden" onChange={onProfileUpload} />
+                </div>
+                <div className="text-xs">
+                  <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Card finish</span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([ ["matte", "Matte"], ["glossy", "Glossy"], ["holo3d", "Holo 3D ✦"] ] as const).map(([finish, label]) => <button key={finish} className="rounded-lg px-1 py-2 text-[10px] font-semibold cursor-pointer" style={{ border: `1px solid ${(cardStyle.finish || "matte") === finish ? cardStyle.accent : "var(--border)"}`, background: finish === "holo3d" ? "linear-gradient(135deg,#806cff,#4debd3)" : (cardStyle.finish || "matte") === finish ? "var(--panel-2)" : "transparent", color: finish === "holo3d" ? "#121212" : "var(--text-dim)" }} onClick={() => setCardStyle({ ...cardStyle, finish })}>{label}</button>)}
+                  </div>
+                </div>
                 <div className="text-xs">
                   <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Frame</span>
                   <div className="grid grid-cols-3 gap-1.5">

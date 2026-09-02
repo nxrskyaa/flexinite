@@ -24,6 +24,8 @@ export interface CardStyle {
   bgY?: number;
   bgScale?: number;
   artOpacity?: number;
+  profileUrl?: string;
+  finish?: "matte" | "glossy" | "holo3d";
   effect?: "none" | "aurora" | "sunset" | "ocean" | "candy";
   frame?: "clean" | "editorial" | "vault" | "signal" | "gallery" | "collector";
 }
@@ -39,6 +41,7 @@ export const defaultCardStyle: CardStyle = {
   bgY: 50,
   bgScale: 100,
   artOpacity: 46,
+  finish: "matte",
   effect: "none",
   frame: "clean",
 };
@@ -189,6 +192,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const artOpacity = Math.min(85, Math.max(15, style.artOpacity ?? 46)) / 100;
   const artOverlay = style.theme === "light" ? `rgba(244,241,235,${Math.max(.18, .72 - artOpacity * .7)})` : `rgba(16,16,16,${Math.max(.18, .72 - artOpacity * .75)})`;
   const effect = style.effect || "none";
+  const finish = style.finish || "matte";
   const effectGradient = effect === "aurora" ? "radial-gradient(circle at 12% 88%, rgba(60,255,189,.34), transparent 42%), radial-gradient(circle at 92% 8%, rgba(111,111,255,.42), transparent 47%)" : effect === "sunset" ? "radial-gradient(circle at 6% 92%, rgba(255,79,111,.38), transparent 45%), radial-gradient(circle at 96% 4%, rgba(255,181,70,.42), transparent 48%)" : effect === "ocean" ? "radial-gradient(circle at 8% 86%, rgba(35,196,255,.36), transparent 45%), radial-gradient(circle at 92% 6%, rgba(97,71,255,.42), transparent 50%)" : effect === "candy" ? "radial-gradient(circle at 8% 88%, rgba(255,83,178,.35), transparent 43%), radial-gradient(circle at 94% 8%, rgba(110,198,255,.42), transparent 48%)" : "none";
   const username = style.username?.trim().replace(/^@+/, "");
   const frame = style.frame || "clean";
@@ -221,6 +225,8 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
         boxSizing: "border-box",
         position: "relative",
         overflow: "hidden",
+        transform: finish === "holo3d" ? "perspective(900px) rotateX(1.1deg) rotateY(-.75deg)" : undefined,
+        transformOrigin: "50% 50%",
         display: "flex",
         flexDirection: "column",
       }}
@@ -233,6 +239,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       {hasCustomBg && style.bgMode === "video" && <video src={style.bgUrl} autoPlay muted loop playsInline style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: bgPosition, transform: `scale(${bgScale})`, transformOrigin: bgPosition, opacity: artOpacity }} />}
       {hasCustomBg && <div aria-hidden style={{ position: "absolute", inset: 0, background: artOverlay }} />}
       {effect !== "none" && <div aria-hidden style={{ position: "absolute", inset: -30, background: effectGradient, filter: "blur(18px)", mixBlendMode: "screen", opacity: hasCustomBg ? .8 : 1, pointerEvents: "none" }} />}
+      {finish !== "matte" && <div aria-hidden style={{ position: "absolute", inset: 0, background: finish === "holo3d" ? "linear-gradient(125deg, rgba(255,255,255,.27) 2%, transparent 22%, rgba(124,108,255,.18) 47%, transparent 61%, rgba(96,255,214,.16) 84%, rgba(255,255,255,.13) 100%)" : "linear-gradient(122deg, rgba(255,255,255,.24) 0%, transparent 25%, transparent 67%, rgba(255,255,255,.1) 100%)", mixBlendMode: "screen", pointerEvents: "none" }} />}
       {frame === "collector" && <><div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(118deg, rgba(255,255,255,.23) 0%, transparent 28%, transparent 66%, rgba(255,255,255,.12) 100%)", mixBlendMode: "screen", pointerEvents: "none" }} /><div aria-hidden style={{ position: "absolute", width: 220, height: 220, borderRadius: "50%", right: -100, bottom: -105, background: accent, opacity: .24, filter: "blur(18px)" }} /></>}
       {frame === "signal" && <div aria-hidden style={{ position: "absolute", inset: 11, border: `1px solid ${accent}88`, borderRadius: 16, pointerEvents: "none" }} />}
       {frame === "vault" && <><div aria-hidden style={{ position: "absolute", top: 12, left: 12, width: 20, height: 20, borderTop: `2px solid ${accent}`, borderLeft: `2px solid ${accent}` }} /><div aria-hidden style={{ position: "absolute", right: 12, bottom: 12, width: 20, height: 20, borderRight: `2px solid ${accent}`, borderBottom: `2px solid ${accent}` }} /></>}
@@ -251,7 +258,10 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
         <div style={{ color: p.faint, fontSize: 10, fontWeight: 650, letterSpacing: 1.6, textTransform: "uppercase" }}>Collection performance</div>
         <div style={{ marginTop: 6, fontSize: 24, lineHeight: 1.12, fontWeight: 600, letterSpacing: -0.55, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{projectName}</div>
         {!style.hideWallet && <div style={{ marginTop: 7, color: p.muted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11 }}>{shortWallet(data.wallet)}</div>}
-        {username && <div style={{ marginTop: 7, color: accent, fontSize: 11, fontWeight: 650, letterSpacing: .15 }}>@{username}</div>}
+      {(username || style.profileUrl) && <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 7 }}>
+        {style.profileUrl && <img src={style.profileUrl} alt="Profile" style={{ width: 23, height: 23, borderRadius: "50%", objectFit: "cover", border: `1px solid ${accent}`, boxShadow: `0 0 0 2px ${p.bg}` }} />}
+        {username && <div style={{ color: accent, fontSize: 11, fontWeight: 650, letterSpacing: .15 }}>@{username}</div>}
+      </div>}
       </div>
 
       <div style={{ position: "relative", zIndex: 1, marginTop: 24, padding: "19px 20px 17px", borderRadius: 10, background: `linear-gradient(135deg, ${p.surfaceStrong}, rgba(0,0,0,.02))`, borderTop: `1px solid ${accent}88`, borderBottom: `1px solid ${p.border}`, boxShadow: `inset 3px 0 0 ${accent}` }}>
