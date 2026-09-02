@@ -950,6 +950,11 @@ export default function Home() {
                 </label>
               </div>
 
+              <div className="grid grid-cols-2 gap-3 mb-3 text-xs">
+                <div><span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Card font</span><div className="grid grid-cols-3 gap-1">{([ ["sans", "Modern"], ["serif", "Editorial"], ["mono", "Mono"] ] as const).map(([font, label]) => <button key={font} className="rounded-md py-2 text-[10px] cursor-pointer" style={{ border: `1px solid ${(cardStyle.font || "sans") === font ? cardStyle.accent : "var(--border)"}`, color: "var(--text-dim)" }} onClick={() => setCardStyle({ ...cardStyle, font })}>{label}</button>)}</div></div>
+                <div><span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Logo / lockup</span><div className="grid grid-cols-3 gap-1">{([ ["mark", "Mark"], ["wordmark", "Word"], ["text", "FLXNITE"] ] as const).map(([brand, label]) => <button key={brand} className="rounded-md py-2 text-[10px] cursor-pointer" style={{ border: `1px solid ${(cardStyle.brand || "mark") === brand ? cardStyle.accent : "var(--border)"}`, color: "var(--text-dim)" }} onClick={() => setCardStyle({ ...cardStyle, brand })}>{label}</button>)}</div></div>
+              </div>
+
               <div className="mb-3 text-xs">
                 <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Gradient / blur effect</span>
                 <div className="grid grid-cols-5 gap-1.5">

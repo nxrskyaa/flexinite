@@ -25,6 +25,8 @@ export interface CardStyle {
   bgScale?: number;
   artOpacity?: number;
   profileUrl?: string;
+  font?: "sans" | "serif" | "mono";
+  brand?: "mark" | "wordmark" | "text";
   finish?: "matte" | "glossy" | "holo3d";
   effect?: "none" | "aurora" | "sunset" | "ocean" | "candy";
   frame?: "clean" | "editorial" | "vault" | "signal" | "gallery" | "collector";
@@ -41,6 +43,8 @@ export const defaultCardStyle: CardStyle = {
   bgY: 50,
   bgScale: 100,
   artOpacity: 46,
+  font: "sans",
+  brand: "mark",
   finish: "matte",
   effect: "none",
   frame: "clean",
@@ -193,6 +197,8 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const artOverlay = style.theme === "light" ? `rgba(244,241,235,${Math.max(.18, .72 - artOpacity * .7)})` : `rgba(16,16,16,${Math.max(.18, .72 - artOpacity * .75)})`;
   const effect = style.effect || "none";
   const finish = style.finish || "matte";
+  const cardFont = style.font === "serif" ? "Georgia, 'Times New Roman', serif" : style.font === "mono" ? "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace" : "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  const brand = style.brand || "mark";
   const effectGradient = effect === "aurora" ? "radial-gradient(circle at 12% 88%, rgba(60,255,189,.34), transparent 42%), radial-gradient(circle at 92% 8%, rgba(111,111,255,.42), transparent 47%)" : effect === "sunset" ? "radial-gradient(circle at 6% 92%, rgba(255,79,111,.38), transparent 45%), radial-gradient(circle at 96% 4%, rgba(255,181,70,.42), transparent 48%)" : effect === "ocean" ? "radial-gradient(circle at 8% 86%, rgba(35,196,255,.36), transparent 45%), radial-gradient(circle at 92% 6%, rgba(97,71,255,.42), transparent 50%)" : effect === "candy" ? "radial-gradient(circle at 8% 88%, rgba(255,83,178,.35), transparent 43%), radial-gradient(circle at 94% 8%, rgba(110,198,255,.42), transparent 48%)" : "none";
   const username = style.username?.trim().replace(/^@+/, "");
   const frame = style.frame || "clean";
@@ -219,9 +225,9 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
         border: frameStyle.border,
         borderRadius: frameStyle.borderRadius,
         boxShadow: frameStyle.boxShadow,
-        fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        fontFamily: cardFont,
         margin: "0 auto",
-        padding: 24,
+        padding: 20,
         boxSizing: "border-box",
         position: "relative",
         overflow: "hidden",
@@ -244,10 +250,10 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       {frame === "signal" && <div aria-hidden style={{ position: "absolute", inset: 11, border: `1px solid ${p.line}`, borderRadius: 10, pointerEvents: "none" }} />}
       {frame === "vault" && <><div aria-hidden style={{ position: "absolute", top: 12, left: 12, width: 18, height: 18, borderTop: `1px solid ${p.border}`, borderLeft: `1px solid ${p.border}` }} /><div aria-hidden style={{ position: "absolute", right: 12, bottom: 12, width: 18, height: 18, borderRight: `1px solid ${p.border}`, borderBottom: `1px solid ${p.border}` }} /></>}
       <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <BrandMark color={accent} />
-          <span style={{ fontSize: 11, fontWeight: 760, letterSpacing: 1.35 }}>FLEXINITE</span>
-          <span style={{ color: accent, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 8, fontWeight: 700, letterSpacing: .7 }}>NXR/01</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          {brand === "mark" && <BrandMark color={accent} />}
+          {brand === "wordmark" && <><BrandMark color={accent} /><span style={{ fontSize: 11, fontWeight: 760, letterSpacing: 1.35 }}>FLEXINITE</span></>}
+          {brand === "text" && <div style={{ display: "flex", flexDirection: "column", gap: 2 }}><span style={{ fontSize: 13, lineHeight: 1, fontWeight: 800, letterSpacing: 1.1 }}>FLXNITE</span><span style={{ color: p.faint, fontSize: 7.5, lineHeight: 1, fontWeight: 650, letterSpacing: .7 }}>BY NXRLABS</span></div>}
         </div>
         <span style={{ border: `1px solid ${p.border}`, background: p.surface, color: p.muted, borderRadius: 999, padding: "5px 10px", fontSize: 10, fontWeight: 600 }}>
           {data.chainLabel}
@@ -269,7 +275,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
           <span style={{ color: p.muted, fontSize: 10, fontWeight: 650, letterSpacing: 1.45, textTransform: "uppercase" }}>{data.pnlLabel || "Realized PnL"}</span>
           <span style={{ color: pnlColor, fontSize: 12, fontWeight: 650 }}>{fmtPct(data.realizedPnlPct)}</span>
         </div>
-        <div style={{ color: pnlColor, fontSize: displayCurrency in snackCurrencies ? 21 : displayCurrency === "idr" ? 29 : 34, lineHeight: 1.06, fontWeight: 600, letterSpacing: displayCurrency in snackCurrencies ? -.5 : -1.2, whiteSpace: displayCurrency in snackCurrencies ? "normal" : "nowrap" }}>
+        <div style={{ color: pnlColor, maxWidth: "100%", overflowWrap: "anywhere", fontSize: displayCurrency in snackCurrencies ? 20 : displayCurrency === "idr" ? 28 : 32, lineHeight: 1.1, fontWeight: 600, letterSpacing: displayCurrency in snackCurrencies ? -.35 : -1.1, whiteSpace: displayCurrency in snackCurrencies ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {isUp ? "+" : ""}{money(pnl, data, displayCurrency)}
         </div>
         {displayCurrency in snackCurrencies && <div style={{ marginTop: 7, color: p.faint, fontSize: 9.5, fontWeight: 600, letterSpacing: .55 }}>SIMULASI JAJAN · {currencyLabel}</div>}
@@ -296,7 +302,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
         <span>{period || `${fmtInt(data.mints)} mint · ${fmtInt(data.buys)} buy · ${fmtInt(data.sales)} sale`}</span>
         <span style={{ fontWeight: 650, letterSpacing: .7 }}>{currencyLabel}</span>
       </div>
-      <div style={{ position: "relative", zIndex: 1, marginTop: 9, textAlign: "center", color: p.faint, fontSize: 9, letterSpacing: .8, fontWeight: 650 }}>FLEXINITE <span style={{ opacity: .65 }}>BY NXRLABS</span></div>
+      <div style={{ position: "relative", zIndex: 1, marginTop: 8, textAlign: "center", color: p.faint, fontSize: 9, letterSpacing: .35, fontWeight: 600 }}>Flexinite <span style={{ opacity: .72 }}>by NxrLabs</span></div>
     </div>
   );
 }
