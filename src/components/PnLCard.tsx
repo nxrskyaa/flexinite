@@ -200,13 +200,15 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const toneColor = tone === "emerald" ? "#7fbf9a" : tone === "amber" ? "#dfb770" : tone === "ice" ? "#9bcde0" : tone === "rose" ? "#d78392" : p.text;
   const pnlColor = tone === "neutral" && isDown ? "#ca7e87" : toneColor;
   const hasCustomBg = style.bgMode !== "none" && !!style.bgUrl;
+  const labelColor = hasCustomBg ? "rgba(255,255,255,.78)" : p.faint;
+  const labelShadow = hasCustomBg ? "0 1px 10px rgba(0,0,0,.78)" : undefined;
   const activity = data.mints + data.buys + data.sales;
   const projectName = data.projectName?.trim() || "NFT Portfolio";
   const period = [data.firstTs ? fmtDate(data.firstTs) : null, data.lastTs ? fmtDate(data.lastTs) : null].filter(Boolean).join(" — ");
   const bgPosition = `${style.bgX ?? 50}% ${style.bgY ?? 50}%`;
   const bgScale = (style.bgScale ?? 100) / 100;
   const artOpacity = Math.min(85, Math.max(15, style.artOpacity ?? 46)) / 100;
-  const artOverlay = style.theme === "light" ? `rgba(244,241,235,${Math.max(.18, .72 - artOpacity * .7)})` : `rgba(16,16,16,${Math.max(.18, .72 - artOpacity * .75)})`;
+  const artOverlay = style.theme === "light" ? `rgba(244,241,235,${Math.max(.34, .76 - artOpacity * .46)})` : `rgba(12,12,12,${Math.max(.42, .78 - artOpacity * .42)})`;
   const effect = style.effect || "none";
   const finish = style.finish || "matte";
   const cardFont = style.font === "serif" ? "Georgia, 'Times New Roman', serif" : style.font === "mono" ? "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace" : "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
@@ -273,7 +275,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       </div>
 
       <div style={{ position: "relative", zIndex: 1, marginTop: 30 }}>
-        <div style={{ color: p.faint, fontSize: 10, fontWeight: 650, letterSpacing: 1.6, textTransform: "uppercase" }}>Collection performance</div>
+        <div style={{ color: labelColor, textShadow: labelShadow, fontSize: 10, fontWeight: 700, letterSpacing: 1.6, textTransform: "uppercase" }}>Collection performance</div>
         <div style={{ marginTop: 6, fontSize: 24, lineHeight: 1.12, fontWeight: 600, letterSpacing: -0.55, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{projectName}</div>
         {!style.hideWallet && <div style={{ marginTop: 7, color: p.muted, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 11 }}>{shortWallet(data.wallet)}</div>}
       {(username || style.profileUrl) && <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 7 }}>
@@ -290,7 +292,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
         <div style={{ color: pnlColor, maxWidth: "100%", overflowWrap: "anywhere", fontSize: displayCurrency in snackCurrencies ? 20 : displayCurrency === "idr" ? 28 : 32, lineHeight: 1.1, fontWeight: 600, letterSpacing: displayCurrency in snackCurrencies ? -.35 : -1.1, whiteSpace: displayCurrency in snackCurrencies ? "normal" : "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {isUp ? "+" : ""}{money(pnl, data, displayCurrency)}
         </div>
-        {displayCurrency in snackCurrencies && <div style={{ marginTop: 7, color: p.faint, fontSize: 9.5, fontWeight: 600, letterSpacing: .55 }}>SIMULASI JAJAN · {currencyLabel}</div>}
+        {displayCurrency in snackCurrencies && <div style={{ marginTop: 7, color: labelColor, textShadow: labelShadow, fontSize: 9.5, fontWeight: 700, letterSpacing: .55 }}>SIMULASI JAJAN · {currencyLabel}</div>}
         <div style={{ height: 3, borderRadius: 99, background: p.line, marginTop: 17, overflow: "hidden" }}>
           <div style={{ width: `${Math.min(100, Math.max(8, Math.abs(data.realizedPnlPct || 0) / 3))}%`, height: "100%", borderRadius: 99, background: pnlColor }} />
         </div>
@@ -314,7 +316,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
         <span>{period || `${fmtInt(data.mints)} mint · ${fmtInt(data.buys)} buy · ${fmtInt(data.sales)} sale`}</span>
         <span style={{ fontWeight: 650, letterSpacing: .7 }}>{currencyLabel}</span>
       </div>
-      <div style={{ position: "relative", zIndex: 1, marginTop: 8, textAlign: "center", color: p.faint, fontSize: 9, letterSpacing: .35, fontWeight: 600 }}>Flexinite <span style={{ opacity: .72 }}>by NxrLabs</span></div>
+      <div style={{ position: "relative", zIndex: 1, marginTop: 8, textAlign: "center", color: labelColor, textShadow: labelShadow, fontSize: 9, letterSpacing: .35, fontWeight: 650 }}>Flexinite <span style={{ opacity: .82 }}>by NxrLabs</span></div>
     </div>
   );
 }
