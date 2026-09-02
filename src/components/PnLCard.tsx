@@ -27,6 +27,7 @@ export interface CardStyle {
   profileUrl?: string;
   font?: "sans" | "serif" | "mono";
   brand?: "mark" | "wordmark" | "text";
+  pnlTone?: "neutral" | "emerald" | "amber" | "ice" | "rose";
   finish?: "matte" | "glossy" | "holo3d";
   effect?: "none" | "aurora" | "sunset" | "ocean" | "candy";
   frame?: "clean" | "editorial" | "vault" | "signal" | "gallery" | "collector";
@@ -45,6 +46,7 @@ export const defaultCardStyle: CardStyle = {
   artOpacity: 46,
   font: "sans",
   brand: "mark",
+  pnlTone: "neutral",
   finish: "matte",
   effect: "none",
   frame: "clean",
@@ -186,7 +188,9 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const displayCurrency = currency === "usd" && !data.nativeUsd ? "native" : needsIdr && !data.nativeIdr ? "native" : currency;
   const currencyLabel = displayCurrency in snackCurrencies ? snackCurrencies[displayCurrency as keyof typeof snackCurrencies].short : displayCurrency === "native" ? data.symbol : displayCurrency.toUpperCase();
   const statCurrency: CardCurrency = displayCurrency in snackCurrencies ? "idr" : displayCurrency;
-  const pnlColor = isUp ? "#62aa83" : isDown ? "#c96f6f" : p.muted;
+  const tone = style.pnlTone || "neutral";
+  const toneColor = tone === "emerald" ? "#7fbf9a" : tone === "amber" ? "#dfb770" : tone === "ice" ? "#9bcde0" : tone === "rose" ? "#d78392" : p.text;
+  const pnlColor = tone === "neutral" && isDown ? "#ca7e87" : toneColor;
   const hasCustomBg = style.bgMode !== "none" && !!style.bgUrl;
   const activity = data.mints + data.buys + data.sales;
   const projectName = data.projectName?.trim() || "NFT Portfolio";
@@ -270,7 +274,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       </div>}
       </div>
 
-      <div style={{ position: "relative", zIndex: 1, marginTop: 24, padding: "19px 20px 17px", borderRadius: 10, background: `linear-gradient(135deg, ${p.surfaceStrong}, rgba(0,0,0,.02))`, borderTop: `1px solid ${p.border}`, borderBottom: `1px solid ${p.border}`, boxShadow: `inset 3px 0 0 ${accent}` }}>
+      <div style={{ position: "relative", zIndex: 1, marginTop: 24, padding: "19px 20px 17px", borderRadius: 10, background: `linear-gradient(135deg, ${p.surfaceStrong}, rgba(0,0,0,.02))`, borderTop: `1px solid ${p.border}`, borderBottom: `1px solid ${p.border}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <span style={{ color: p.muted, fontSize: 10, fontWeight: 650, letterSpacing: 1.45, textTransform: "uppercase" }}>{data.pnlLabel || "Realized PnL"}</span>
           <span style={{ color: pnlColor, fontSize: 12, fontWeight: 650 }}>{fmtPct(data.realizedPnlPct)}</span>

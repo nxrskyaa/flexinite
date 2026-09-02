@@ -956,6 +956,11 @@ export default function Home() {
               </div>
 
               <div className="mb-3 text-xs">
+                <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>PnL ink</span>
+                <div className="grid grid-cols-5 gap-1.5">{([ ["neutral", "Neutral", "#e9e6df"], ["emerald", "Emerald", "#7fbf9a"], ["amber", "Amber", "#dfb770"], ["ice", "Ice", "#9bcde0"], ["rose", "Rose", "#d78392"] ] as const).map(([pnlTone, label, color]) => <button key={pnlTone} className="rounded-lg py-2 text-[10px] font-semibold cursor-pointer" style={{ border: `1px solid ${(cardStyle.pnlTone || "neutral") === pnlTone ? color : "var(--border)"}`, color }} onClick={() => setCardStyle({ ...cardStyle, pnlTone })}>{label}</button>)}</div>
+              </div>
+
+              <div className="mb-3 text-xs">
                 <span className="block mb-1.5" style={{ color: "var(--text-dim)" }}>Gradient / blur effect</span>
                 <div className="grid grid-cols-5 gap-1.5">
                   {([
