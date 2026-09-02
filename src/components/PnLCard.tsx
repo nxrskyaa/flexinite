@@ -160,9 +160,10 @@ function money(wei: string | bigint, data: CardData, currency: CardCurrency) {
 
 function BrandMark({ color }: { color: string }) {
   return (
-    <svg width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
-      <rect width="32" height="32" rx="8" fill={color} />
-      <path d="M17.8 4L7.5 18.2h6.2L12 28l10.5-14.2h-6.2z" fill="#141310" />
+    <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M5 8.5 16 3l11 5.5v15L16 29 5 23.5z" fill="#151515" stroke={color} strokeWidth="1.6" />
+      <path d="M10 10.2h10.6L17.7 14H12v4.1h6.2l-2.9 3.7H12v2.1h-2z" fill={color} />
+      <path d="m20.6 10.2-2.9 3.8H22v7.8h-2V14h-2.3l2.9-3.8z" fill="#f4f1ea" opacity=".9" />
     </svg>
   );
 }
@@ -192,16 +193,16 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
   const username = style.username?.trim().replace(/^@+/, "");
   const frame = style.frame || "clean";
   const frameStyle = frame === "editorial"
-    ? { border: `2px solid ${accent}`, borderRadius: 18, boxShadow: `inset 0 0 0 5px ${p.bg}, 0 24px 70px rgba(0,0,0,.38)` }
+    ? { border: `2px solid ${accent}`, borderRadius: 18, boxShadow: `inset 0 0 0 4px ${p.bg}` }
     : frame === "vault"
-      ? { border: `1px solid ${accent}`, borderRadius: 8, boxShadow: `inset 0 0 0 1px ${p.border}, 0 24px 70px rgba(0,0,0,.38)` }
+      ? { border: `1px solid ${accent}`, borderRadius: 8, boxShadow: `inset 0 0 0 1px ${p.border}` }
       : frame === "gallery"
-        ? { border: `7px solid ${p.surfaceStrong}`, borderRadius: 15, boxShadow: `inset 0 0 0 1px ${accent}88, 0 24px 70px rgba(0,0,0,.42)` }
+        ? { border: `7px solid ${p.surfaceStrong}`, borderRadius: 15, boxShadow: `inset 0 0 0 1px ${accent}88` }
         : frame === "collector"
-          ? { border: `2px solid ${accent}`, borderRadius: 22, boxShadow: `0 0 0 5px ${accent}30, 0 0 42px ${accent}88, inset 0 0 0 1px rgba(255,255,255,.30)` }
-      : frame === "signal"
-        ? { border: `1px solid ${p.border}`, borderRadius: 24, boxShadow: `inset 0 0 0 1px ${accent}44, 0 24px 70px rgba(0,0,0,.38)` }
-        : { border: `1px solid ${p.border}`, borderRadius: 24, boxShadow: "0 24px 70px rgba(0,0,0,.38)" };
+          ? { border: `1px solid ${accent}`, borderRadius: 18, boxShadow: `inset 0 0 0 5px ${p.bg}, inset 0 0 0 6px ${accent}55` }
+        : frame === "signal"
+          ? { border: `1px solid ${p.border}`, borderRadius: 24, boxShadow: `inset 0 0 0 1px ${accent}44` }
+          : { border: `1px solid ${p.border}`, borderRadius: 24, boxShadow: "none" };
 
   return (
     <div
@@ -238,7 +239,8 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
       <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <BrandMark color={accent} />
-          <span style={{ fontSize: 11, fontWeight: 650, letterSpacing: 2.1 }}>FLEXINITE</span>
+          <span style={{ fontSize: 11, fontWeight: 760, letterSpacing: 1.35 }}>FLEXINITE</span>
+          <span style={{ color: accent, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 8, fontWeight: 700, letterSpacing: .7 }}>NXR/01</span>
         </div>
         <span style={{ border: `1px solid ${p.border}`, background: p.surface, color: p.muted, borderRadius: 999, padding: "5px 10px", fontSize: 10, fontWeight: 600 }}>
           {data.chainLabel}
@@ -252,7 +254,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
         {username && <div style={{ marginTop: 7, color: accent, fontSize: 11, fontWeight: 650, letterSpacing: .15 }}>@{username}</div>}
       </div>
 
-      <div style={{ position: "relative", zIndex: 1, marginTop: 24, padding: "20px 20px 18px", borderRadius: 18, background: p.surfaceStrong, border: `1px solid ${p.border}` }}>
+      <div style={{ position: "relative", zIndex: 1, marginTop: 24, padding: "19px 20px 17px", borderRadius: 10, background: `linear-gradient(135deg, ${p.surfaceStrong}, rgba(0,0,0,.02))`, borderTop: `1px solid ${accent}88`, borderBottom: `1px solid ${p.border}`, boxShadow: `inset 3px 0 0 ${accent}` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <span style={{ color: p.muted, fontSize: 10, fontWeight: 650, letterSpacing: 1.45, textTransform: "uppercase" }}>{data.pnlLabel || "Realized PnL"}</span>
           <span style={{ color: pnlColor, fontSize: 12, fontWeight: 650 }}>{fmtPct(data.realizedPnlPct)}</span>
@@ -273,7 +275,7 @@ export default function PnLCard({ data, style }: { data: CardData; style: CardSt
           ["NFTs held", fmtInt(data.held)],
           ["Activity", `${fmtInt(activity)} tx`],
         ].map(([label, value]) => (
-          <div key={label} style={{ padding: "12px 13px", background: p.surface, border: `1px solid ${p.line}`, borderRadius: 13 }}>
+          <div key={label} style={{ padding: "12px 13px", background: "rgba(10,10,10,.20)", borderTop: `1px solid ${p.line}`, borderBottom: `1px solid ${p.line}`, borderRadius: 7 }}>
             <div style={{ color: p.faint, fontSize: 9.5, fontWeight: 600, letterSpacing: .75, textTransform: "uppercase" }}>{label}</div>
             <div style={{ marginTop: 5, fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
           </div>
